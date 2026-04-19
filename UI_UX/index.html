@@ -676,6 +676,45 @@
     </div>
   </div>
 
+  <!-- SCREEN: FACULTY HOME -->
+  <div id="s-faculty" class="screen has-nav">
+    <div class="card" style="border-radius:0;border-left:none;border-right:none;border-top:none;padding:50px 20px 16px;flex-shrink:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div>
+          <p style="font-size:13px;color:var(--text2);margin:0 0 2px" id="faculty-greeting">Good afternoon 👋</p>
+          <h1 style="font-size:22px;font-weight:900;color:var(--text);margin:0;line-height:1.2">Faculty<br>Dashboard</h1>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="theme-btn-fac" onclick="toggleTheme()" style="width:36px;height:36px;border-radius:50%;background:var(--bg2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px">☀️</div>
+          <div style="position:relative">
+            <div style="width:36px;height:36px;border-radius:50%;background:var(--indigo-bg);border:1px solid var(--indigo-bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px" onclick="push('s-notifications','forward')">🔔</div>
+          </div>
+          <div id="fac-avatar" style="width:36px;height:36px;border-radius:50%;background:var(--indigo);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;cursor:pointer" onclick="push('s-profile','forward')">FA</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px">
+        <span style="font-size:16px">🔍</span>
+        <input type="text" placeholder="Search canteens..." oninput="searchCanteens(this.value)"
+          style="flex:1;background:transparent;border:none;outline:none;font-size:14px;color:var(--text);font-family:inherit">
+      </div>
+    </div>
+    <div class="scroll-y" style="padding:16px 20px 8px">
+      <p class="section-label">Faculty Quick Actions</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+        <div class="card" style="padding:12px;text-align:center;cursor:pointer;background:var(--indigo-bg);border-color:var(--indigo-bdr)" onclick="showToast('Priority lane activated for next order')">
+          <p style="font-size:24px;margin:0 0 4px">⚡</p>
+          <p style="font-size:11px;font-weight:700;color:var(--indigo);margin:0">Priority Lane</p>
+        </div>
+        <div class="card" style="padding:12px;text-align:center;cursor:pointer" onclick="showToast('Meeting catering feature coming soon!')">
+          <p style="font-size:24px;margin:0 0 4px">☕</p>
+          <p style="font-size:11px;font-weight:700;color:var(--text);margin:0">Meeting Snacks</p>
+        </div>
+      </div>
+      <p class="section-label">Campus Outlets</p>
+      <div id="outlets-list-fac"></div>
+    </div>
+  </div>
+
   <!-- SCREEN: MENU -->
   <div id="s-menu" class="screen has-nav">
     <div class="card" style="border-radius:0;border-left:none;border-right:none;border-top:none;padding:50px 20px 0;flex-shrink:0">
@@ -1016,8 +1055,15 @@
         </div>
         <div style="width:48px;height:48px;border-radius:50%;border:3px solid var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:var(--indigo)">20%</div>
       </div>
+      <!-- Toggle Row -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;background:var(--bg2);padding:4px;border-radius:999px;border:1px solid var(--border)">
+        <button id="baker-tab-tickets" style="flex:1;padding:8px;border-radius:999px;border:none;background:var(--surface);font-size:12px;font-weight:700;color:var(--primary);box-shadow:0 1px 3px rgba(0,0,0,0.1);cursor:pointer;transition:all 0.2s" onclick="switchBakerTab('tickets')">Tickets</button>
+        <button id="baker-tab-prep" style="flex:1;padding:8px;border-radius:999px;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--text3);cursor:pointer;transition:all 0.2s" onclick="switchBakerTab('prep')">Bulk Prep</button>
+      </div>
       <!-- Tickets -->
       <div id="baker-tickets" style="display:flex;flex-direction:column;gap:12px"></div>
+      <!-- Bulk Prep View -->
+      <div id="baker-prep-view" style="display:none;flex-direction:column;gap:10px"></div>
       <div id="baker-empty" style="display:none;text-align:center;padding:40px 20px">
         <div style="font-size:48px;margin-bottom:12px">🍽️</div>
         <p style="font-weight:700;color:var(--text);margin:0">Queue is clear!</p>
@@ -1030,7 +1076,10 @@
   <div id="s-baker-inv" class="screen has-nav">
     <div style="background:var(--dark-hdr);padding:50px 20px 16px;flex-shrink:0">
       <p style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.08em;margin:0 0 4px">Main Canteen</p>
-      <h2 style="font-size:22px;font-weight:900;color:#fff;margin:0">Live Inventory</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="font-size:22px;font-weight:900;color:#fff;margin:0">Live Inventory</h2>
+        <button style="background:var(--primary);color:#fff;border:none;border-radius:12px;padding:6px 14px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(249,115,22,0.4)" onclick="openAddMenuModal()">+ Add to Menu</button>
+      </div>
     </div>
     <div class="scroll-y" style="padding:16px 20px">
       <p style="font-size:12px;color:var(--text2);margin:0 0 14px">Toggle availability — sold-out items are hidden from students automatically.</p>
@@ -1089,6 +1138,7 @@
         <button class="admin-tab active" data-tab="overview" onclick="adminTab(this,'overview')">Overview</button>
         <button class="admin-tab" data-tab="queue" onclick="adminTab(this,'queue')">Live Queue</button>
         <button class="admin-tab" data-tab="menu" onclick="adminTab(this,'menu')">Menu</button>
+        <button class="admin-tab" data-tab="feedback" onclick="adminTab(this,'feedback')">Feedback</button>
         <button class="admin-tab" data-tab="analytics" onclick="adminTab(this,'analytics')">Analytics</button>
         <button class="admin-tab" data-tab="settings" onclick="adminTab(this,'settings')">Settings</button>
       </div>
@@ -1133,6 +1183,7 @@
       <div id="admin-menu" style="display:none">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <p style="font-weight:700;font-size:15px;color:var(--text);margin:0">Menu Management</p>
+          <button style="background:var(--primary);color:#fff;border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer" onclick="openAddMenuModal()">+ Add Item</button>
         </div>
         <div class="card" style="padding:0;overflow:hidden">
           <div style="display:grid;grid-template-columns:1fr 60px 50px 55px 80px 80px;gap:6px;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)">
@@ -1144,6 +1195,24 @@
             <span style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase">Action</span>
           </div>
           <div id="admin-menu-rows"></div>
+        </div>
+      </div>
+
+      <!-- FEEDBACK -->
+      <div id="admin-feedback" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <p style="font-weight:700;font-size:15px;color:var(--text);margin:0">Customer Feedback</p>
+          <span style="font-size:12px;font-weight:700;color:var(--primary)">4.6/5 Avg</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-weight:700;font-size:13px;color:var(--text)">Meera T.</span><span style="color:#F59E0B;font-size:11px">⭐⭐⭐⭐⭐</span></div>
+            <p style="font-size:12px;color:var(--text2);margin:0">"Veg Thali is great value for money!"</p>
+          </div>
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-weight:700;font-size:13px;color:var(--text)">Rahul M.</span><span style="color:#F59E0B;font-size:11px">⭐⭐⭐⭐</span></div>
+            <p style="font-size:12px;color:var(--text2);margin:0">"Cold coffee could be slightly colder, but tasty."</p>
+          </div>
         </div>
       </div>
 
@@ -1187,6 +1256,10 @@
         </div>
         <p class="section-label">Users Directory</p>
         <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border)">
+             <span style="font-size:13px;font-weight:700;color:var(--text)">Active Users</span>
+             <button style="background:var(--primary-bg);color:var(--primary);border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer" onclick="showToast('Add User Dialog Opened')">+ Add User</button>
+          </div>
           <div style="display:grid;grid-template-columns:1fr 80px 70px;gap:8px;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)">
             <span style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase">Email</span>
             <span style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase">Role</span>
@@ -1268,6 +1341,26 @@
         <div class="role-card" onclick="rejectWith('Technical issue')"><div class="role-card-name">Technical issue</div></div>
       </div>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ADD MENU ITEM MODAL -->
+  <div class="modal-overlay" id="add-menu-modal" onclick="closeAddMenuModal()">
+    <div class="modal-sheet" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <p style="font-weight:800;font-size:18px;color:var(--text);margin:0 0 16px">Add New Menu Item</p>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px">
+        <input id="new-item-name" type="text" class="field" placeholder="Item Name (e.g., Pasta)">
+        <select id="new-item-cat" class="field" style="appearance:none">
+          <option value="Maggi">Maggi</option>
+          <option value="Meals">Meals</option>
+          <option value="Snacks">Snacks</option>
+          <option value="Drinks" selected>Drinks</option>
+        </select>
+        <input id="new-item-price" type="number" class="field" placeholder="Price (₹)">
+      </div>
+      <button class="btn-primary" onclick="submitNewMenuItem()">Add to Menu</button>
+      <button class="btn-secondary" style="margin-top:10px" onclick="closeAddMenuModal()">Cancel</button>
     </div>
   </div>
 
@@ -1544,10 +1637,10 @@ function doLogin() {
   applyRole(S.role);
   setupProfile();
   switch(S.role) {
-    case 'student':
-    case 'faculty':  show('s-home');   setNav('customer'); setFirstActive('s-home'); break;
-    case 'staff':    show('s-baker');  setNav('baker');    setFirstActive('s-baker'); break;
-    case 'admin':    show('s-admin');  setNav('none');     break;
+    case 'student':  show('s-home');     setNav('customer'); setFirstActive('s-home'); break;
+    case 'faculty':  show('s-faculty');  setNav('faculty');  setFirstActive('s-faculty'); break;
+    case 'staff':    show('s-baker');    setNav('baker');    setFirstActive('s-baker'); break;
+    case 'admin':    show('s-admin');    setNav('none');     break;
   }
 }
 
@@ -1557,6 +1650,8 @@ function applyRole(role) {
   const greet = hour < 12 ? 'Good morning ☀️' : hour < 17 ? 'Good afternoon 👋' : 'Good evening 🌙';
   const el = document.getElementById('home-greeting');
   if (el) el.textContent = greet;
+  const fel = document.getElementById('faculty-greeting');
+  if (fel) fel.textContent = greet;
 }
 
 function setupProfile() {
@@ -1581,13 +1676,26 @@ function setupProfile() {
   // Home avatar
   const ha = document.getElementById('home-avatar');
   if(ha) ha.textContent = initials;
+  const hFac = document.getElementById('fac-avatar');
+  if(hFac) hFac.textContent = initials;
 }
 
 function setNav(role) {
   const nav = document.getElementById('bottom-nav');
   document.querySelectorAll('.c-nav,.b-nav').forEach(e => e.style.display='none');
-  if (role === 'customer') {
-    document.querySelectorAll('.c-nav').forEach(e => e.style.display='flex');
+  
+  // Faculty uses the same functional bottom nav buttons as student, but routes their "Home" to s-faculty
+  if (role === 'customer' || role === 'faculty') {
+    document.querySelectorAll('.c-nav').forEach(e => {
+      e.style.display='flex';
+      if (e.dataset.s === 's-home' && role === 'faculty') {
+        e.dataset.s = 's-faculty';
+        e.setAttribute('onclick', "pushNav('s-faculty','home')");
+      } else if (e.dataset.s === 's-faculty' && role === 'customer') {
+        e.dataset.s = 's-home';
+        e.setAttribute('onclick', "pushNav('s-home','home')");
+      }
+    });
     nav.classList.add('visible');
   } else if (role === 'baker') {
     document.querySelectorAll('.b-nav').forEach(e => e.style.display='flex');
@@ -1629,9 +1737,7 @@ function logout() {
 //  OUTLETS
 // ──────────────────────────────────────────
 function renderOutlets(list) {
-  const container = document.getElementById('outlets-list');
-  if (!container) return;
-  container.innerHTML = list.map(o => `
+  const renderList = list.map(o => `
     <div class="card" style="margin-bottom:12px;${!o.open?'opacity:0.6':''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div>
@@ -1654,6 +1760,11 @@ function renderOutlets(list) {
         }
       </div>
     </div>`).join('');
+  
+  const cStudent = document.getElementById('outlets-list');
+  const cFac     = document.getElementById('outlets-list-fac');
+  if (cStudent) cStudent.innerHTML = renderList;
+  if (cFac)     cFac.innerHTML     = renderList;
 }
 
 function searchCanteens(q) {
@@ -1664,7 +1775,11 @@ function searchCanteens(q) {
     : OUTLETS;
   renderOutlets(filtered);
   if (filtered.length === 0) {
-    document.getElementById('outlets-list').innerHTML = `<div style="text-align:center;padding:32px 0"><div style="font-size:40px;margin-bottom:10px">🔍</div><p style="font-weight:700;color:var(--text)">No results for "${q}"</p><p style="font-size:13px;color:var(--text2)">Try a different search</p></div>`;
+    const emptyUI = `<div style="text-align:center;padding:32px 0"><div style="font-size:40px;margin-bottom:10px">🔍</div><p style="font-weight:700;color:var(--text)">No results for "${q}"</p><p style="font-size:13px;color:var(--text2)">Try a different search</p></div>`;
+    const cStudent = document.getElementById('outlets-list');
+    const cFac     = document.getElementById('outlets-list-fac');
+    if(cStudent) cStudent.innerHTML = emptyUI;
+    if(cFac)     cFac.innerHTML     = emptyUI;
   }
 }
 
@@ -1898,6 +2013,53 @@ function renderBakerTickets() {
       </div>
     </div>`;
   }).join('');
+  
+  // Render Prep View
+  renderBakerPrepView();
+}
+
+function renderBakerPrepView() {
+  const prepContainer = document.getElementById('baker-prep-view');
+  if (!prepContainer) return;
+  const itemsCount = {};
+  bakerTickets.forEach(t => {
+    t.items.split(', ').forEach(i => {
+      // Removing things like "1x " prefix if any, but the data is just names like "Masala Maggi"
+      let name = i.replace(/^[0-9]+× /g, '').trim();
+      itemsCount[name] = (itemsCount[name] || 0) + 1;
+    });
+  });
+
+  if (Object.keys(itemsCount).length === 0) {
+    prepContainer.innerHTML = '<p style="text-align:center;font-size:13px;color:var(--text3)">No items to prep right now.</p>';
+    return;
+  }
+
+  prepContainer.innerHTML = Object.entries(itemsCount)
+    .sort((a,b) => b[1] - a[1]) // highest first
+    .map(([name, qty]) => `
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-color:var(--primary-bdr)">
+      <span style="font-weight:700;font-size:15px;color:var(--text)">${name}</span>
+      <div style="background:var(--primary);color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px">${qty}</div>
+    </div>
+  `).join('');
+}
+
+function switchBakerTab(tab) {
+  const tBtn = document.getElementById('baker-tab-tickets');
+  const pBtn = document.getElementById('baker-tab-prep');
+  const tView = document.getElementById('baker-tickets');
+  const pView = document.getElementById('baker-prep-view');
+  
+  if (tab === 'tickets') {
+    tBtn.style.background='var(--surface)'; tBtn.style.fontWeight='700'; tBtn.style.color='var(--primary)'; tBtn.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)';
+    pBtn.style.background='transparent'; pBtn.style.fontWeight='600'; pBtn.style.color='var(--text3)'; pBtn.style.boxShadow='none';
+    tView.style.display='flex'; pView.style.display='none';
+  } else {
+    pBtn.style.background='var(--surface)'; pBtn.style.fontWeight='700'; pBtn.style.color='var(--primary)'; pBtn.style.boxShadow='0 1px 3px rgba(0,0,0,0.1)';
+    tBtn.style.background='transparent'; tBtn.style.fontWeight='600'; tBtn.style.color='var(--text3)'; tBtn.style.boxShadow='none';
+    pView.style.display='flex'; tView.style.display='none';
+  }
 }
 
 function startPrep(id) {
@@ -1983,10 +2145,42 @@ function toggleInv(i) {
 function adminTab(btn, tab) {
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['overview','queue','menu','analytics','settings'].forEach(t => {
+  ['overview','queue','menu','feedback','analytics','settings'].forEach(t => {
     const el = document.getElementById(`admin-${t}`);
     if (el) el.style.display = (t === tab) ? 'block' : 'none';
   });
+}
+
+function openAddMenuModal() {
+  const m = document.getElementById('add-menu-modal');
+  if (m) m.classList.add('open');
+}
+
+function closeAddMenuModal() {
+  const m = document.getElementById('add-menu-modal');
+  if (m) m.classList.remove('open');
+  document.getElementById('new-item-name').value = '';
+  document.getElementById('new-item-price').value = '';
+}
+
+function submitNewMenuItem() {
+  const name = document.getElementById('new-item-name').value.trim();
+  const cat = document.getElementById('new-item-cat').value;
+  const price = parseInt(document.getElementById('new-item-price').value, 10);
+  
+  if (!name || !price) {
+    showToast('Please fill all fields');
+    return;
+  }
+  
+  MENU_ITEMS.push({ name, cat, price, inStock: true });
+  closeAddMenuModal();
+  showToast(`Added ${name} to Menu!`);
+  
+  // Refresh all relevant views
+  renderMenu();
+  renderAdminMenu();
+  renderBakerInventory();
 }
 
 function renderAdminQueue() {
