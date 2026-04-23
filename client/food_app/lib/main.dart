@@ -1,25 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'providers/user_provider.dart';
+import 'providers/cart_provider.dart';
+import 'theme/app_theme.dart';
+import 'screens/auth/login_screen.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => CartProvider()),
+      ],
+      child: const AurabakeApp(),
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AurabakeApp extends StatelessWidget {
+  const AurabakeApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'PreOrder System',
-      debugShowCheckedModeBanner: false,
-      home: const Scaffold(
-        body: Center(
-          child: Text(
-            'PreOrder App',
-            style: TextStyle(fontSize: 24),
-          ),
-        ),
-      ),
+    return Consumer<UserProvider>(
+      builder: (context, userProvider, _) {
+        return MaterialApp(
+          title: 'Aurabake',
+          debugShowCheckedModeBanner: false,
+          themeMode: userProvider.themeMode,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          home: const LoginScreen(),
+        );
+      },
     );
   }
 }
