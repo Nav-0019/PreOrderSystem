@@ -25,6 +25,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final List<Map<String, dynamic>> _roles = [
     {'id': 'student', 'label': 'STUDENT', 'icon': Icons.school},
     {'id': 'faculty', 'label': 'FACULTY', 'icon': Icons.person},
+    {'id': 'staff', 'label': 'STAFF', 'icon': Icons.kitchen},
+    {'id': 'admin', 'label': 'ADMIN', 'icon': Icons.admin_panel_settings},
   ];
 
   @override
@@ -51,9 +53,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
     
     final email = _emailController.text.trim();
-    if (!email.toLowerCase().endsWith('@college.edu')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
-      return;
+    if (_selectedRole == 'student' || _selectedRole == 'faculty') {
+      if (!email.toLowerCase().endsWith('@college.edu')) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
+        return;
+      }
     }
 
     // In a real app, this would hit an API.
@@ -82,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       role = 'staff';
     } else if (email == 'faculty@college.edu' && password == 'password') {
       role = 'faculty';
-    } else if (email.endsWith('@college.edu') && password.isNotEmpty) {
+    } else if (email.endsWith('@college.edu')) {
       role = 'student';
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid username or password.')));
@@ -197,10 +201,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             width: 48, height: 48,
             decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withOpacity(0.08)),
             alignment: Alignment.center,
-            child: const Text('👋', style: TextStyle(fontSize: 24)),
+            child: const Icon(Icons.lock_person_outlined, color: AppTheme.primary, size: 24),
           ),
           const SizedBox(height: 10),
-          Text('Sign In (Use demo credentials for testing)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+          Text('Enter your credentials to access your dashboard', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
           const SizedBox(height: 20),
           _buildField(Icons.email_outlined, 'Email (e.g. admin@aurabake.com)', _loginEmailController),
           const SizedBox(height: 12),
