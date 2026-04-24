@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
+
 class BakerQueueScreen extends StatefulWidget {
   const BakerQueueScreen({super.key});
 
@@ -153,8 +154,12 @@ class _BakerQueueScreenState extends State<BakerQueueScreen> {
                     if (priority)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: AppTheme.indigoBg, borderRadius: BorderRadius.circular(4)),
-                        child: const Text('FACULTY', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.indigo)),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [AppTheme.goldLight, Color(0xFFFFECB3)]),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppTheme.goldBorder, width: 0.5),
+                        ),
+                        child: const Text('PREMIUM ✦', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.goldDark)),
                       ),
                   ],
                 ),
