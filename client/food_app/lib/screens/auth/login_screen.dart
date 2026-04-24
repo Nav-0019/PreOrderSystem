@@ -24,7 +24,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   final List<Map<String, dynamic>> _roles = [
     {'id': 'student', 'label': 'STUDENT', 'icon': Icons.school},
-    {'id': 'faculty', 'label': 'FACULTY', 'icon': Icons.person},
+    {'id': 'staff', 'label': 'STAFF', 'icon': Icons.kitchen},
+    {'id': 'admin', 'label': 'ADMIN', 'icon': Icons.admin_panel_settings},
   ];
 
   @override
@@ -51,9 +52,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
     
     final email = _emailController.text.trim();
-    if (!email.toLowerCase().endsWith('@college.edu')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
-      return;
+    if (_selectedRole == 'student') {
+      if (!email.toLowerCase().endsWith('@college.edu')) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
+        return;
+      }
     }
 
     // In a real app, this would hit an API.
@@ -75,14 +78,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final password = _loginPasswordController.text.trim();
 
     String role = 'student';
+    bool isPremium = false;
     // Strict dummy verification instead of wildcard matching
     if (email == 'admin@aurabake.com' && password == 'admin123') {
       role = 'admin';
     } else if (email == 'staff@aurabake.com' && password == 'staff123') {
       role = 'staff';
-    } else if (email == 'faculty@college.edu' && password == 'password') {
-      role = 'faculty';
-    } else if (email.endsWith('@college.edu') && password.isNotEmpty) {
+    } else if (email == 'premium@college.edu' && password == 'premium123') {
+      role = 'student';
+      isPremium = true;
+    } else if (email.endsWith('@college.edu')) {
       role = 'student';
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid username or password.')));
@@ -90,11 +95,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
 
     // In a real app, this would hit an API and validate credentials.
-    context.read<UserProvider>().setUser(
-      name: role.toUpperCase(), 
+    final userProvider = context.read<UserProvider>();
+    userProvider.setUser(
+      name: role == 'admin' ? 'ADMIN' : role == 'staff' ? 'STAFF' : isPremium ? 'Premium User' : role.toUpperCase(), 
       email: email, 
       role: role
     );
+    if (isPremium) {
+      userProvider.togglePremium();
+    }
     Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
   }
 
@@ -197,10 +206,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             width: 48, height: 48,
             decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withOpacity(0.08)),
             alignment: Alignment.center,
-            child: const Text('👋', style: TextStyle(fontSize: 24)),
+            child: const Icon(Icons.lock_person_outlined, color: AppTheme.primary, size: 24),
           ),
           const SizedBox(height: 10),
-          Text('Sign In (Use demo credentials for testing)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+          Text('Enter your credentials to access your dashboard', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
           const SizedBox(height: 20),
           _buildField(Icons.email_outlined, 'Email (e.g. admin@aurabake.com)', _loginEmailController),
           const SizedBox(height: 12),
@@ -274,18 +283,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return GestureDetector(
       onTap: () => setState(() => _selectedRole = role['id']),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         child: Column(
           children: [
             Container(
-              width: 60, height: 60,
+              width: 64, height: 64,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isSelected ? AppTheme.primary.withOpacity(0.08) : theme.dividerColor.withOpacity(0.3),
                 border: Border.all(color: isSelected ? AppTheme.primary : theme.dividerColor, width: 2.5),
               ),
               alignment: Alignment.center,
-              child: Icon(role['icon'], size: 26, color: isSelected ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4)),
+              child: Icon(role['icon'], size: 28, color: isSelected ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4)),
             ),
             const SizedBox(height: 6),
             Text(role['label'], style: TextStyle(fontSize: 10, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700, letterSpacing: 0.06, color: isSelected ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4))),

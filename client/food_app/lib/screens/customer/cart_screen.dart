@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
 import 'tracking_screen.dart';
 
@@ -24,7 +25,11 @@ class _CartScreenState extends State<CartScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cart = context.watch<CartProvider>();
+    final user = context.watch<UserProvider>();
     final items = cart.items.values.toList();
+    final isPremium = user.isPremium;
+    final discount = isPremium ? cart.totalAmount * 0.10 : 0.0;
+    final total = cart.totalAmount - discount + 5;
 
     return Scaffold(
       body: Column(
@@ -46,6 +51,25 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 const SizedBox(width: 12),
                 const Text('Your Cart', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                if (isPremium) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [AppTheme.goldLight, Color(0xFFFFECB3)]),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.goldBorder),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.bolt, size: 12, color: AppTheme.goldDark),
+                        SizedBox(width: 2),
+                        Text('Priority', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.goldDark)),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -57,6 +81,27 @@ class _CartScreenState extends State<CartScreen> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
                     children: [
+                      // Premium priority banner
+                      if (isPremium)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [AppTheme.goldLight, Color(0xFFFFECB3)]),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppTheme.goldBorder),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.bolt, size: 16, color: AppTheme.goldDark),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text('⚡ Priority Order — Your order will be prepared first!', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.goldDark)),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       // Cart items
                       Container(
                         decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.dividerColor)),
@@ -115,7 +160,7 @@ class _CartScreenState extends State<CartScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(color: AppTheme.primaryBg, borderRadius: BorderRadius.circular(999)),
-                                  child: const Text('Capacity: 3/20', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                                  child: Text(isPremium ? '⚡ Priority' : 'Capacity: 3/20', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: isPremium ? AppTheme.goldDark : AppTheme.primary)),
                                 ),
                               ],
                             ),
@@ -141,7 +186,10 @@ class _CartScreenState extends State<CartScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            const Text('Orders fulfilled strictly in slot window to prevent queue overlap.', style: TextStyle(fontSize: 10, color: AppTheme.indigo, fontWeight: FontWeight.w500)),
+                            Text(
+                              isPremium ? 'Premium members get priority preparation within their slot.' : 'Orders fulfilled strictly in slot window to prevent queue overlap.',
+                              style: const TextStyle(fontSize: 10, color: AppTheme.indigo, fontWeight: FontWeight.w500),
+                            ),
                           ],
                         ),
                       ),
@@ -155,13 +203,17 @@ class _CartScreenState extends State<CartScreen> {
                           children: [
                             _summaryRow('Subtotal', '₹${cart.totalAmount.toStringAsFixed(0)}', theme),
                             const SizedBox(height: 8),
+                            if (isPremium) ...[
+                              _summaryRow('Premium Discount (10%)', '-₹${discount.toStringAsFixed(0)}', theme, valueColor: const Color(0xFF16A34A)),
+                              const SizedBox(height: 8),
+                            ],
                             _summaryRow('Platform fee', '₹5', theme),
                             Divider(height: 24, color: theme.dividerColor),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text('Total', style: TextStyle(fontWeight: FontWeight.w800)),
-                                Text('₹${(cart.totalAmount + 5).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.primary)),
+                                Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppTheme.primary)),
                               ],
                             ),
                           ],
@@ -187,7 +239,7 @@ class _CartScreenState extends State<CartScreen> {
                     boxShadow: [BoxShadow(color: AppTheme.primary.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 4))],
                   ),
                   alignment: Alignment.center,
-                  child: const Text('Pay & Place Order', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                  child: Text(isPremium ? '⚡ Pay & Place Priority Order' : 'Pay & Place Order', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
                 ),
               ),
             )
@@ -216,12 +268,12 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _summaryRow(String label, String value, ThemeData theme) {
+  Widget _summaryRow(String label, String value, ThemeData theme, {Color? valueColor}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.5))),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: valueColor)),
       ],
     );
   }

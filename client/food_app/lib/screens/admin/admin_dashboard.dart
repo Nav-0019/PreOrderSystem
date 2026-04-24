@@ -201,7 +201,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         Text('ACTIVE TICKETS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
         const SizedBox(height: 10),
         _ticketRow('#45 • John Doe', 'Main Canteen: 2x Thali, 1x Coke', 'In Progress', AppTheme.yellow, theme),
-        _ticketRow('#46 • Faculty Meet', 'Snack Corner: 10x Samosa, 5x Tea', 'Priority', AppTheme.red, theme),
+        _ticketRow('#46 • Premium Order', 'Snack Corner: 10x Samosa, 5x Tea', 'Priority ✦', AppTheme.gold, theme),
         _ticketRow('#47 • Jane Smith', 'Main Canteen: 1x Masala Maggi', 'Pending', theme.colorScheme.onSurface.withOpacity(0.5), theme),
       ],
     );

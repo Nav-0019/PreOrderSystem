@@ -8,6 +8,7 @@ import '../../models/menu_item.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
+import 'premium_screen.dart';
 
 class CustomerHome extends StatefulWidget {
   const CustomerHome({super.key});
@@ -102,7 +103,11 @@ class _CustomerHomeState extends State<CustomerHome> {
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
                           child: Container(
                             width: 36, height: 36,
-                            decoration: const BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppTheme.primary,
+                              border: user.isPremium ? Border.all(color: AppTheme.gold, width: 2.5) : null,
+                            ),
                             alignment: Alignment.center,
                             child: Text(user.initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
                           ),
@@ -153,6 +158,10 @@ class _CustomerHomeState extends State<CustomerHome> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 80),
               children: [
+                // Premium membership banner
+                _buildPremiumBanner(user, theme),
+                const SizedBox(height: 16),
+
                 // Live stats
                 Row(
                   children: [
@@ -160,7 +169,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                     const SizedBox(width: 10),
                     _statCard('${_filtered.fold(0, (sum, o) => sum + o.queueCount)}', 'In queue', theme),
                     const SizedBox(width: 10),
-                    _statCard('8m', 'Avg wait', theme),
+                    _statCard(user.isPremium ? '~4m' : '8m', 'Avg wait', theme),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -168,11 +177,100 @@ class _CustomerHomeState extends State<CustomerHome> {
                 Text('CAMPUS OUTLETS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
                 const SizedBox(height: 10),
 
-                ..._filtered.map((outlet) => _OutletCard(outlet: outlet)),
+                ..._filtered.map((outlet) => _OutletCard(outlet: outlet, isPremium: user.isPremium)),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumBanner(UserProvider user, ThemeData theme) {
+    if (user.isPremium) {
+      // Active premium strip
+      return GestureDetector(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PremiumScreen())),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFFF8E1), Color(0xFFFFECB3)],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.goldBorder),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.gold.withOpacity(0.15),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.workspace_premium, size: 20, color: AppTheme.gold),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Premium Active ✦', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.goldDark)),
+                    Text('Priority queue · 10% off all orders', style: TextStyle(fontSize: 11, color: AppTheme.gold.withOpacity(0.8))),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 18, color: AppTheme.gold),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Upgrade CTA banner
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PremiumScreen())),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFD4A017), Color(0xFFB8860B)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: AppTheme.gold.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.15),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.workspace_premium, size: 26, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Go Premium ✦', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.white)),
+                  const SizedBox(height: 3),
+                  Text('Priority queue, 10% off, skip-the-line & more', style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.8))),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+              child: const Text('₹99/mo', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.goldDark)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -196,7 +294,8 @@ class _CustomerHomeState extends State<CustomerHome> {
 
 class _OutletCard extends StatelessWidget {
   final Outlet outlet;
-  const _OutletCard({required this.outlet});
+  final bool isPremium;
+  const _OutletCard({required this.outlet, required this.isPremium});
 
   @override
   Widget build(BuildContext context) {
@@ -240,8 +339,12 @@ class _OutletCard extends StatelessWidget {
                     children: [
                       _chip(Icons.storefront, outlet.isOpen ? 'Open' : 'Closed', outlet.isOpen ? AppTheme.green : AppTheme.red),
                       const SizedBox(width: 8),
-                      if (outlet.isOpen) _chip(Icons.timer, '${outlet.waitTime}', AppTheme.yellow),
-                      if (outlet.isOpen) ...[
+                      if (outlet.isOpen) _chip(Icons.timer, isPremium ? '~${_reducedWait(outlet.waitTime)}' : outlet.waitTime, isPremium ? AppTheme.gold : AppTheme.yellow),
+                      if (outlet.isOpen && isPremium) ...[
+                        const SizedBox(width: 8),
+                        _chip(Icons.bolt, 'Priority', AppTheme.gold),
+                      ],
+                      if (outlet.isOpen && !isPremium) ...[
                         const SizedBox(width: 8),
                         _chip(Icons.people, '${outlet.queueCount}', theme.colorScheme.onSurface.withOpacity(0.5)),
                       ],
@@ -258,16 +361,27 @@ class _OutletCard extends StatelessWidget {
     );
   }
 
+  String _reducedWait(String wait) {
+    // Simple mock: reduce displayed wait for premium
+    if (wait.contains('8')) return '4–6m';
+    if (wait.contains('3')) return '1–2m';
+    return wait;
+  }
+
   Widget _chip(IconData icon, String text, Color color) {
+    final displayColor = color == AppTheme.green ? const Color(0xFF16A34A) 
+                       : color == AppTheme.red ? const Color(0xFFDC2626) 
+                       : color == AppTheme.gold ? AppTheme.goldDark
+                       : color;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 10, color: color == AppTheme.green ? const Color(0xFF16A34A) : color == AppTheme.red ? const Color(0xFFDC2626) : color),
+          Icon(icon, size: 10, color: displayColor),
           const SizedBox(width: 4),
-          Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color == AppTheme.green ? const Color(0xFF16A34A) : color == AppTheme.red ? const Color(0xFFDC2626) : color)),
+          Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: displayColor)),
         ],
       ),
     );

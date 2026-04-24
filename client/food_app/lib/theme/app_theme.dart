@@ -14,6 +14,12 @@ class AppTheme {
   static const Color indigoBg = Color(0xFFEEF2FF);
   static const Color indigoBdr = Color(0xFFC7D2FE);
   static const Color yellow = Color(0xFFF59E0B);
+
+  // Premium Membership Colors
+  static const Color gold = Color(0xFFD4A017);
+  static const Color goldLight = Color(0xFFFFF8E1);
+  static const Color goldBorder = Color(0xFFFFD54F);
+  static const Color goldDark = Color(0xFFB8860B);
   
   static const Color darkHdr = Color(0xFF0F172A);
 

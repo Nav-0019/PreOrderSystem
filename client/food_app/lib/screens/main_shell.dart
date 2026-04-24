@@ -10,9 +10,6 @@ import 'customer/support_screen.dart';
 import 'customer/profile_screen.dart';
 import 'customer/cart_screen.dart';
 
-// Faculty
-import 'faculty/faculty_home.dart';
-
 // Staff
 import 'staff/baker_queue_screen.dart';
 import 'staff/baker_inventory_screen.dart';
@@ -61,12 +58,12 @@ class _MainShellState extends State<MainShell> {
         _NavItemData(Icons.person_outline, 'Profile'),
       ];
     } else {
-      // Student & Faculty share the same nav structure
-      pages = [
-        role == 'faculty' ? const FacultyHome() : const CustomerHome(),
-        const OrdersScreen(),
-        const SupportScreen(),
-        const ProfileScreen(),
+      // Student (regular & premium) share the same nav structure
+      pages = const [
+        CustomerHome(),
+        OrdersScreen(),
+        SupportScreen(),
+        ProfileScreen(),
       ];
       navItems = [
         _NavItemData(Icons.home_outlined, 'Home'),
@@ -99,7 +96,6 @@ class _MainShellState extends State<MainShell> {
             children: [
               // Build nav items, inserting Cart button in the middle for non-staff
               ...List.generate(navItems.length, (i) {
-                // For student/faculty, insert a cart button after index 1 (Orders)
                 return _buildNavButton(navItems[i], i, theme);
               }),
               // Cart button for non-staff roles (between Orders and Chat)
