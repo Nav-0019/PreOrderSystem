@@ -1,18 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 
 class TrackingScreen extends StatefulWidget {
-  const TrackingScreen({super.key});
+  final String orderId;
+  const TrackingScreen({super.key, required this.orderId});
 
   @override
   State<TrackingScreen> createState() => _TrackingScreenState();
 }
 
 class _TrackingScreenState extends State<TrackingScreen> {
-  int _step = 2; // 0:Ordered, 1:In Queue, 2:Preparing, 3:Ready
+  int _step = 0; // 0:Ordered/Pending, 1:In Queue/Prep, 2:Preparing/Prep, 3:Ready
+  bool _isLoading = true;
+  late final Stream<List<Map<String, dynamic>>> _orderStream;
 
-  void _simulateReady() {
-    setState(() => _step = 3);
+  @override
+  void initState() {
+    super.initState();
+    _orderStream = Supabase.instance.client
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .eq('id', widget.orderId);
+
+    _orderStream.listen((data) {
+      if (data.isNotEmpty && mounted) {
+        final status = data[0]['status'] as String;
+        setState(() {
+          if (status == 'pending') _step = 0;
+          else if (status == 'prep') _step = 2; // skip 1 for simplicity
+          else if (status == 'ready') _step = 3;
+          else if (status == 'completed') _step = 3;
+          else if (status == 'cancelled') _step = 0;
+          _isLoading = false;
+        });
+      }
+    });
   }
 
   @override
@@ -43,7 +66,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
           Divider(height: 1, color: theme.dividerColor),
 
           Expanded(
-            child: ListView(
+            child: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView(
               padding: const EdgeInsets.all(20),
               children: [
                 // Steps
@@ -64,11 +87,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.dividerColor)),
                     child: Column(
                       children: [
-                        Text('Your queue position', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                        Text('Your order is active', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.6))),
                         const SizedBox(height: 6),
-                        const Text('#4', style: TextStyle(fontSize: 52, fontWeight: FontWeight.w900, color: AppTheme.primary, height: 1)),
+                        Text(_step == 0 ? 'Pending' : 'Preparing', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: AppTheme.primary, height: 1)),
                         const SizedBox(height: 8),
-                        Text('3 orders ahead of you', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                        Text('Wait for counter call', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
                       ],
                     ),
                   ),
@@ -82,7 +105,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         const SizedBox(height: 8),
                         const Text('Order Ready!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primary)),
                         const SizedBox(height: 4),
-                        Text('Please collect it from Counter No. 3', style: TextStyle(fontSize: 13, color: AppTheme.primary.withOpacity(0.8))),
+                        Text('Please collect it from the counter', style: TextStyle(fontSize: 13, color: AppTheme.primary.withOpacity(0.8))),
                       ],
                     ),
                   ),
@@ -90,9 +113,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
                 Row(
                   children: [
-                    Expanded(child: _infoCard('Est. Pickup', _step == 3 ? 'Now' : '~12 min', theme)),
+                    Expanded(child: _infoCard('Est. Pickup', _step == 3 ? 'Now' : '~10 min', theme)),
                     const SizedBox(width: 12),
-                    Expanded(child: _infoCard('Counter', 'No. 3', theme)),
+                    Expanded(child: _infoCard('Counter', 'Main', theme)),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -106,7 +129,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), side: BorderSide(color: theme.dividerColor)),
-                  child: Text('Back to Home', style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600)),
+                  child: Text('Back to Orders', style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),

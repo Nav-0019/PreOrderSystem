@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../services/supabase_service.dart';
 import 'tracking_screen.dart';
 
 class CartScreen extends StatefulWidget {
@@ -15,10 +16,35 @@ class CartScreen extends StatefulWidget {
 class _CartScreenState extends State<CartScreen> {
   String _selectedSlot = '12:30 PM – 12:40 PM  (Fastest)';
 
-  void _placeOrder() {
+  bool _isSubmitting = false;
+
+  Future<void> _placeOrder() async {
     final cart = context.read<CartProvider>();
-    cart.clear();
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const TrackingScreen()));
+    final user = context.read<UserProvider>();
+    final isPremium = user.isPremium;
+    final discount = isPremium ? cart.totalAmount * 0.10 : 0.0;
+    final total = cart.totalAmount - discount + 5;
+
+    setState(() => _isSubmitting = true);
+
+    final orderId = await SupabaseService.placeOrder(
+      totalAmount: total,
+      items: cart.items.values.map((i) => {
+        'id': i.id,
+        'quantity': i.quantity,
+        'price': i.price,
+      }).toList(),
+    );
+
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+
+    if (orderId != null) {
+      cart.clear();
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => TrackingScreen(orderId: orderId)));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to place order. Please try again.')));
+    }
   }
 
   @override
@@ -239,7 +265,9 @@ class _CartScreenState extends State<CartScreen> {
                     boxShadow: [BoxShadow(color: AppTheme.primary.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 4))],
                   ),
                   alignment: Alignment.center,
-                  child: Text(isPremium ? '⚡ Pay & Place Priority Order' : 'Pay & Place Order', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                  child: _isSubmitting
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : Text(isPremium ? '⚡ Pay & Place Priority Order' : 'Pay & Place Order', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
                 ),
               ),
             )

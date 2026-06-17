@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,13 +20,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _idController = TextEditingController();
+  final _registerPasswordController = TextEditingController();
   final _loginEmailController = TextEditingController();
   final _loginPasswordController = TextEditingController();
 
   final List<Map<String, dynamic>> _roles = [
     {'id': 'student', 'label': 'STUDENT', 'icon': Icons.school},
     {'id': 'staff', 'label': 'STAFF', 'icon': Icons.kitchen},
-    {'id': 'admin', 'label': 'ADMIN', 'icon': Icons.admin_panel_settings},
+
   ];
 
   @override
@@ -40,35 +42,55 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _nameController.dispose();
     _emailController.dispose();
     _idController.dispose();
+    _registerPasswordController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
     super.dispose();
   }
 
-  void _submitForm() {
-    if (_nameController.text.trim().isEmpty || _emailController.text.trim().isEmpty || _idController.text.trim().isEmpty) {
+  Future<void> _submitForm() async {
+    if (_nameController.text.trim().isEmpty || _emailController.text.trim().isEmpty || _registerPasswordController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill out all fields.')));
       return;
     }
     
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
+    final password = _registerPasswordController.text.trim();
+    final name = _nameController.text.trim();
+
     if (_selectedRole == 'student') {
-      if (!email.toLowerCase().endsWith('@college.edu')) {
+      if (!email.endsWith('@college.edu')) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
         return;
       }
     }
 
-    // In a real app, this would hit an API.
-    context.read<UserProvider>().setUser(
-      name: _nameController.text.trim(), 
-      email: email, 
-      role: _selectedRole
-    );
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
+    try {
+      final res = await Supabase.instance.client.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'name': name,
+          'role': _selectedRole,
+        }
+      );
+
+      if (res.user != null) {
+        context.read<UserProvider>().setUser(
+          name: name, 
+          email: email, 
+          role: _selectedRole
+        );
+        if (!mounted) return;
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
   }
 
-  void _doLogin() {
+  Future<void> _doLogin() async {
     if (_loginEmailController.text.trim().isEmpty || _loginPasswordController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter email and password.')));
       return;
@@ -77,34 +99,36 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final email = _loginEmailController.text.trim().toLowerCase();
     final password = _loginPasswordController.text.trim();
 
-    String role = 'student';
-    bool isPremium = false;
-    // Strict dummy verification instead of wildcard matching
-    if (email == 'admin@aurabake.com' && password == 'admin123') {
-      role = 'admin';
-    } else if (email == 'staff@aurabake.com' && password == 'staff123') {
-      role = 'staff';
-    } else if (email == 'premium@college.edu' && password == 'premium123') {
-      role = 'student';
-      isPremium = true;
-    } else if (email.endsWith('@college.edu')) {
-      role = 'student';
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid username or password.')));
-      return;
-    }
+    try {
+      final res = await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
 
-    // In a real app, this would hit an API and validate credentials.
-    final userProvider = context.read<UserProvider>();
-    userProvider.setUser(
-      name: role == 'admin' ? 'ADMIN' : role == 'staff' ? 'STAFF' : isPremium ? 'Premium User' : role.toUpperCase(), 
-      email: email, 
-      role: role
-    );
-    if (isPremium) {
-      userProvider.togglePremium();
+      if (res.user != null) {
+        // Fetch user profile from Supabase
+        final profile = await Supabase.instance.client.from('users').select().eq('id', res.user!.id).maybeSingle();
+        
+        String role = profile?['role'] as String? ?? 'student';
+        String name = profile?['name'] as String? ?? 'Student';
+        bool isPremium = profile?['is_premium'] as bool? ?? false;
+
+        final userProvider = context.read<UserProvider>();
+        userProvider.setUser(
+          name: name,
+          email: email,
+          role: role,
+        );
+        if (isPremium && !userProvider.isPremium) {
+          userProvider.togglePremium();
+        }
+        if (!mounted) return;
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
   }
 
   @override
@@ -211,9 +235,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           const SizedBox(height: 10),
           Text('Enter your credentials to access your dashboard', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
           const SizedBox(height: 20),
-          _buildField(Icons.email_outlined, 'Email (e.g. admin@aurabake.com)', _loginEmailController),
+          _buildField(Icons.email_outlined, 'Email (e.g. staff@aurabake.com)', _loginEmailController),
           const SizedBox(height: 12),
-          _buildField(Icons.lock_outline, 'Password (admin123)', _loginPasswordController, isPassword: true),
+          _buildField(Icons.lock_outline, 'Password (staff123)', _loginPasswordController, isPassword: true),
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
@@ -267,9 +291,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             const SizedBox(height: 12),
             _buildField(Icons.email_outlined, 'College Email', _emailController),
             const SizedBox(height: 12),
-            _buildField(Icons.badge_outlined, 'College ID / Roll Number', _idController),
+            _buildField(Icons.lock_outline, 'Create Password', _registerPasswordController, isPassword: true),
             const SizedBox(height: 20),
-            _buildGradientButton('Continue →', _submitForm),
+            _buildGradientButton('Sign Up →', _submitForm),
             const SizedBox(height: 14),
             Text('Need a different role? Tap to select above.', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.4))),
           ],

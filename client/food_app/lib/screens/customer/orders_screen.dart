@@ -1,13 +1,61 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 import 'tracking_screen.dart';
+import 'package:intl/intl.dart';
 
-class OrdersScreen extends StatelessWidget {
+class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
+
+  @override
+  State<OrdersScreen> createState() => _OrdersScreenState();
+}
+
+class _OrdersScreenState extends State<OrdersScreen> {
+  List<dynamic> _orders = [];
+  bool _isLoading = true;
+  late final Stream<List<Map<String, dynamic>>> _ordersStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final userId = Supabase.instance.client.auth.currentUser!.id;
+    _ordersStream = Supabase.instance.client
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+
+    _ordersStream.listen((_) {
+      _fetchFullOrders(userId);
+    });
+  }
+
+  Future<void> _fetchFullOrders(String userId) async {
+    final response = await Supabase.instance.client.from('orders').select('''
+      *,
+      outlets (name),
+      order_items (
+        quantity,
+        menu_items (name)
+      )
+    ''').eq('user_id', userId).order('created_at', ascending: false);
+    
+    if (mounted) {
+      setState(() {
+        _orders = response;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    
+    final activeOrders = _orders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').toList();
+    final pastOrders = _orders.where((o) => o['status'] == 'completed' || o['status'] == 'cancelled').toList();
+
     return Scaffold(
       body: Column(
         children: [
@@ -19,42 +67,25 @@ class OrdersScreen extends StatelessWidget {
           ),
           Divider(height: 1, color: theme.dividerColor),
           Expanded(
-            child: ListView(
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator()) 
+              : ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // Active order
-                GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TrackingScreen())),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: AppTheme.primaryBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppTheme.primaryBdr)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Order in Progress', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.primary)),
-                            const SizedBox(height: 2),
-                            Text('Tap to track · Counter No. 3', style: TextStyle(fontSize: 12, color: AppTheme.primary.withOpacity(0.7))),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: AppTheme.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(999)),
-                          child: const Text('Preparing', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                if (activeOrders.isNotEmpty) ...[
+                  Text('ACTIVE ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
+                  const SizedBox(height: 12),
+                  ...activeOrders.map((o) => _ActiveOrderCard(order: o)),
+                  const SizedBox(height: 20),
+                ],
 
-                Text('PAST ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
-                const SizedBox(height: 12),
-
-                _PastOrderCard(canteen: 'Main Canteen', info: '12 Apr · 12:30 PM · #44', items: '1× Masala Maggi, 1× Cold Coffee', total: '₹85', theme: theme),
-                _PastOrderCard(canteen: 'Snack Corner', info: '10 Apr · 1:15 PM · #31', items: '2× Samosa (2pc)', total: '₹40', theme: theme),
+                if (pastOrders.isNotEmpty) ...[
+                  Text('PAST ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
+                  const SizedBox(height: 12),
+                  ...pastOrders.map((o) => _PastOrderCard(order: o, theme: theme)),
+                ] else if (activeOrders.isEmpty) ...[
+                  const Center(child: Text('No orders yet.')),
+                ]
               ],
             ),
           ),
@@ -64,13 +95,55 @@ class OrdersScreen extends StatelessWidget {
   }
 }
 
-class _PastOrderCard extends StatelessWidget {
-  final String canteen, info, items, total;
-  final ThemeData theme;
-  const _PastOrderCard({required this.canteen, required this.info, required this.items, required this.total, required this.theme});
+class _ActiveOrderCard extends StatelessWidget {
+  final dynamic order;
+  const _ActiveOrderCard({required this.order});
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TrackingScreen(orderId: order['id']))),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: AppTheme.primaryBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppTheme.primaryBdr)),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Order at ${order['outlets']['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.primary)),
+                const SizedBox(height: 2),
+                Text('Tap to track · #${order['id'].toString().substring(0,6)}', style: TextStyle(fontSize: 12, color: AppTheme.primary.withOpacity(0.7))),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: AppTheme.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(999)),
+              child: Text((order['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PastOrderCard extends StatelessWidget {
+  final dynamic order;
+  final ThemeData theme;
+  const _PastOrderCard({required this.order, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateTime.parse(order['created_at']).toLocal();
+    final formattedDate = DateFormat('dd MMM · hh:mm a').format(date);
+    
+    final itemsList = (order['order_items'] as List).map((i) {
+      return '${i['quantity']}× ${i['menu_items']['name']}';
+    }).join(', ');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -86,18 +159,26 @@ class _PastOrderCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(canteen, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text(info, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.5))),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(order['outlets']['name'], style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text('$formattedDate · #${order['id'].toString().substring(0,6)}', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                  ],
+                ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: AppTheme.green.withOpacity(0.1), borderRadius: BorderRadius.circular(999)),
-                child: const Text('Delivered', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF16A34A))),
+                decoration: BoxDecoration(
+                  color: order['status'] == 'completed' ? AppTheme.green.withOpacity(0.1) : AppTheme.red.withOpacity(0.1), 
+                  borderRadius: BorderRadius.circular(999)
+                ),
+                child: Text(
+                  order['status'] == 'completed' ? 'Delivered' : 'Cancelled', 
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: order['status'] == 'completed' ? const Color(0xFF16A34A) : const Color(0xFFDC2626))
+                ),
               ),
             ],
           ),
@@ -105,19 +186,9 @@ class _PastOrderCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Divider(height: 1, color: theme.dividerColor),
           ),
-          Text(items, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+          Text(itemsList, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(total, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(color: AppTheme.primaryBg, borderRadius: BorderRadius.circular(8)),
-                child: const Text('Reorder', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-              ),
-            ],
-          ),
+          Text('₹${order['total_amount']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         ],
       ),
     );
