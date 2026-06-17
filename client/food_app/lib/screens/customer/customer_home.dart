@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../models/app_data.dart';
 import '../../models/menu_item.dart';
+import '../../services/supabase_service.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
@@ -19,6 +21,23 @@ class CustomerHome extends StatefulWidget {
 class _CustomerHomeState extends State<CustomerHome> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  List<Outlet> _outlets = [];
+  bool _isLoading = true;
+  late final Stream<List<Map<String, dynamic>>> _outletsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _outletsStream = Supabase.instance.client.from('outlets').stream(primaryKey: ['id']).order('name');
+    _outletsStream.listen((_) async {
+      final fetchedOutlets = await SupabaseService.getOutlets();
+      if (!mounted) return;
+      setState(() {
+        _outlets = fetchedOutlets;
+        _isLoading = false;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -33,7 +52,7 @@ class _CustomerHomeState extends State<CustomerHome> {
     return 'Good evening 👋';
   }
 
-  List<Outlet> get _filtered => kOutlets.where((o) =>
+  List<Outlet> get _filtered => _outlets.where((o) =>
     _searchQuery.isEmpty ||
     o.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
     o.tagline.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
@@ -178,6 +197,8 @@ class _CustomerHomeState extends State<CustomerHome> {
                 const SizedBox(height: 10),
 
                 ..._filtered.map((outlet) => _OutletCard(outlet: outlet, isPremium: user.isPremium)),
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator()),
               ],
             ),
           ),

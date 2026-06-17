@@ -15,8 +15,6 @@ import 'staff/baker_queue_screen.dart';
 import 'staff/baker_inventory_screen.dart';
 import 'staff/baker_profile_screen.dart';
 
-// Admin
-import 'admin/admin_dashboard.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -37,10 +35,6 @@ class _MainShellState extends State<MainShell> {
     final role = context.watch<UserProvider>().role;
     final theme = Theme.of(context);
 
-    // Admin gets a full-screen dashboard with no bottom nav
-    if (role == 'admin') {
-      return const AdminDashboardScreen();
-    }
 
     // Build pages and nav items based on role
     final List<Widget> pages;
