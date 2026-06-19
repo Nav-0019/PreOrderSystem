@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'otp_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -49,50 +49,64 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _submitForm() async {
-    if (_nameController.text.trim().isEmpty || _emailController.text.trim().isEmpty || _registerPasswordController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill out all fields.')));
+    if (_nameController.text.trim().isEmpty ||
+        _emailController.text.trim().isEmpty ||
+        _registerPasswordController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill out all fields.')));
       return;
     }
-    
+
     final email = _emailController.text.trim().toLowerCase();
     final password = _registerPasswordController.text.trim();
     final name = _nameController.text.trim();
 
-    if (_selectedRole == 'student') {
-      if (!email.endsWith('@college.edu')) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
-        return;
-      }
+    if (_selectedRole == 'student' && !email.endsWith('@college.edu')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
+      return;
     }
 
     try {
-      final res = await Supabase.instance.client.auth.signUp(
-        email: email,
-        password: password,
-        data: {
-          'name': name,
-          'role': _selectedRole,
-        }
-      );
+      // Create Firebase Auth user
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
 
-      if (res.user != null) {
-        context.read<UserProvider>().setUser(
-          name: name, 
-          email: email, 
-          role: _selectedRole
-        );
-        if (!mounted) return;
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
-      }
+      // Update display name
+      await credential.user?.updateDisplayName(name);
+
+      // Write profile to Firestore (Cloud Function also does this, but
+      // writing here ensures immediate availability)
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(credential.user!.uid)
+          .set({
+        'uid': credential.user!.uid,
+        'name': name,
+        'email': email,
+        'role': _selectedRole,
+        'isPremium': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // UserProvider listens to authStateChanges — no manual navigation needed.
+      // main.dart will route to MainShell automatically.
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Sign up failed')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())));
     }
   }
 
   Future<void> _doLogin() async {
-    if (_loginEmailController.text.trim().isEmpty || _loginPasswordController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter email and password.')));
+    if (_loginEmailController.text.trim().isEmpty ||
+        _loginPasswordController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter email and password.')));
       return;
     }
 
@@ -100,34 +114,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final password = _loginPasswordController.text.trim();
 
     try {
-      final res = await Supabase.instance.client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-
-      if (res.user != null) {
-        // Fetch user profile from Supabase
-        final profile = await Supabase.instance.client.from('users').select().eq('id', res.user!.id).maybeSingle();
-        
-        String role = profile?['role'] as String? ?? 'student';
-        String name = profile?['name'] as String? ?? 'Student';
-        bool isPremium = profile?['is_premium'] as bool? ?? false;
-
-        final userProvider = context.read<UserProvider>();
-        userProvider.setUser(
-          name: name,
-          email: email,
-          role: role,
-        );
-        if (isPremium && !userProvider.isPremium) {
-          userProvider.togglePremium();
-        }
-        if (!mounted) return;
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpScreen()));
-      }
+      await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+      // UserProvider listens to authStateChanges — routing handled automatically.
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Login failed')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())));
     }
   }
 

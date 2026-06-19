@@ -1,46 +1,35 @@
 import { motion } from 'framer-motion';
 import { TrendingUp, Users, Clock, DollarSign } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export default function Overview() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [activeQueue, setActiveQueue] = useState(0);
   const [revenue, setRevenue] = useState(0);
   const [outlets, setOutlets] = useState<any[]>([]);
-
   const [avgWait, setAvgWait] = useState('0 min');
 
   useEffect(() => {
-    fetchStats();
-    fetchOutlets();
-  }, []);
-
-  const fetchStats = async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const { data: orders } = await supabase
-      .from('orders')
-      .select('status, total_amount, created_at');
-
-    if (orders) {
-      // For demo, we just count all. In real life, filter by today's date.
+    // Real-time listener for orders
+    const ordersUnsub = onSnapshot(collection(db, 'orders'), (snap) => {
+      const orders = snap.docs.map(d => d.data());
       setTotalOrders(orders.length);
-      
-      const active = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+      const active = orders.filter(o => !['completed', 'cancelled'].includes(o.status)).length;
       setActiveQueue(active);
       setAvgWait(`${active * 2} min`);
-
-      const totalRev = orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+      const totalRev = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
       setRevenue(totalRev);
-    }
-  };
+    });
 
-  const fetchOutlets = async () => {
-    const { data } = await supabase.from('outlets').select('*');
-    if (data) setOutlets(data);
-  };
+    // Real-time listener for outlets
+    const outletsUnsub = onSnapshot(collection(db, 'outlets'), (snap) => {
+      setOutlets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { ordersUnsub(); outletsUnsub(); };
+  }, []);
 
   const stats = [
     { label: 'Total Orders', value: totalOrders.toString(), change: 'Lifetime', icon: Users, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
@@ -96,10 +85,10 @@ export default function Overview() {
               <div key={outlet.id} className="flex items-center justify-between p-4 bg-zinc-950/50 rounded-xl border border-zinc-800/50">
                 <div>
                   <p className="font-semibold">{outlet.name}</p>
-                  <p className="text-sm text-zinc-400">Queue: {outlet.queue_count} • Wait: {outlet.wait_time}</p>
+                  <p className="text-sm text-zinc-400">Queue: {outlet.queueCount} • Wait: {outlet.waitTime}</p>
                 </div>
-                <div className={`px-3 py-1 text-xs font-semibold rounded-full ${outlet.is_open ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {outlet.is_open ? 'Open' : 'Closed'}
+                <div className={`px-3 py-1 text-xs font-semibold rounded-full ${outlet.isOpen ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                  {outlet.isOpen ? 'Open' : 'Closed'}
                 </div>
               </div>
             ))}

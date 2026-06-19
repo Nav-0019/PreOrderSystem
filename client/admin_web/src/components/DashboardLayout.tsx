@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { auth } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
 import { LayoutDashboard, ListOrdered, UtensilsCrossed, BarChart3, LogOut, ChefHat } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -7,7 +8,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut(auth);
     navigate('/login');
   };
 

@@ -1,13 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing Supabase environment variables. ' +
-    'Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Vercel project settings under Settings → Environment Variables.'
-  )
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// This file is kept only for backward compatibility during migration.
+// All new code should import from './firebase' directly.
+export { auth, db } from './firebase';
