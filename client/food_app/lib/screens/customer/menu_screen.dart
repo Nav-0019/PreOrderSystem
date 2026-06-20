@@ -98,7 +98,7 @@ class _MenuScreenState extends State<MenuScreen> {
             child: ListView.builder(
               padding: EdgeInsets.fromLTRB(20, 4, 20, cart.itemCount > 0 ? 110 : 24),
               itemCount: _filteredItems.length,
-              itemBuilder: (ctx, i) => _MenuItemCard(item: _filteredItems[i]),
+              itemBuilder: (ctx, i) => _MenuItemCard(item: _filteredItems[i], outlet: widget.outlet),
             ),
           ),
         ],
@@ -148,7 +148,8 @@ class _MenuScreenState extends State<MenuScreen> {
 
 class _MenuItemCard extends StatelessWidget {
   final MenuItem item;
-  const _MenuItemCard({required this.item});
+  final Outlet outlet;
+  const _MenuItemCard({required this.item, required this.outlet});
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +193,7 @@ class _MenuItemCard extends StatelessWidget {
           // Add / Stepper
           qty == 0
               ? GestureDetector(
-                  onTap: () => context.read<CartProvider>().addItem(item.id, item.name, item.price),
+                  onTap: () => context.read<CartProvider>().addItem(item.id, item.name, item.price, outletId: outlet.id, outletName: outlet.name),
                   child: Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(color: AppTheme.primary, borderRadius: BorderRadius.circular(10),
@@ -212,7 +213,7 @@ class _MenuItemCard extends StatelessWidget {
                       ),
                       Text('$qty', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
                       GestureDetector(
-                        onTap: () => context.read<CartProvider>().addItem(item.id, item.name, item.price),
+                        onTap: () => context.read<CartProvider>().addItem(item.id, item.name, item.price, outletId: outlet.id, outletName: outlet.name),
                         child: const SizedBox(width: 36, height: 36, child: Icon(Icons.add, color: Colors.white, size: 16)),
                       ),
                     ],

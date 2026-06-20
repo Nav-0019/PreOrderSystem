@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/firebase_service.dart';
 import '../../theme/app_theme.dart';
 import 'tracking_screen.dart';
 import 'package:intl/intl.dart';
@@ -19,34 +20,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   void initState() {
     super.initState();
-    final userId = Supabase.instance.client.auth.currentUser!.id;
-    _ordersStream = Supabase.instance.client
-        .from('orders')
-        .stream(primaryKey: ['id'])
-        .eq('user_id', userId)
-        .order('created_at', ascending: false);
+    _ordersStream = FirebaseService.streamMyOrders();
 
-    _ordersStream.listen((_) {
-      _fetchFullOrders(userId);
+    _ordersStream.listen((data) {
+      if (mounted) {
+        setState(() {
+          _orders = data;
+          _isLoading = false;
+        });
+      }
     });
-  }
-
-  Future<void> _fetchFullOrders(String userId) async {
-    final response = await Supabase.instance.client.from('orders').select('''
-      *,
-      outlets (name),
-      order_items (
-        quantity,
-        menu_items (name)
-      )
-    ''').eq('user_id', userId).order('created_at', ascending: false);
-    
-    if (mounted) {
-      setState(() {
-        _orders = response;
-        _isLoading = false;
-      });
-    }
   }
 
   @override
@@ -113,7 +96,7 @@ class _ActiveOrderCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Order at ${order['outlets']['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.primary)),
+                Text('Order at ${order['outletName'] ?? 'Outlet'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.primary)),
                 const SizedBox(height: 2),
                 Text('Tap to track · #${order['id'].toString().substring(0,6)}', style: TextStyle(fontSize: 12, color: AppTheme.primary.withOpacity(0.7))),
               ],
@@ -137,12 +120,13 @@ class _PastOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final date = DateTime.parse(order['created_at']).toLocal();
+    final createdAt = order['createdAt'];
+    final date = createdAt != null ? (createdAt as Timestamp).toDate().toLocal() : DateTime.now();
     final formattedDate = DateFormat('dd MMM · hh:mm a').format(date);
     
-    final itemsList = (order['order_items'] as List).map((i) {
-      return '${i['quantity']}× ${i['menu_items']['name']}';
-    }).join(', ');
+    final itemsList = (order['items'] as List?)?.map((i) {
+      return '${i['quantity']}× ${i['name']}';
+    }).join(', ') ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -163,7 +147,7 @@ class _PastOrderCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(order['outlets']['name'], style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(order['outletName'] ?? 'Outlet', style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('$formattedDate · #${order['id'].toString().substring(0,6)}', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.5))),
                   ],
@@ -188,7 +172,7 @@ class _PastOrderCard extends StatelessWidget {
           ),
           Text(itemsList, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
           const SizedBox(height: 12),
-          Text('₹${order['total_amount']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          Text('₹${order['totalAmount']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         ],
       ),
     );

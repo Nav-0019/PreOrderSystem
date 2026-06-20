@@ -30,8 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
               {this.state.error?.message || 'An unexpected error occurred.'}
             </p>
             <p className="text-zinc-500 text-xs">
-              Check that environment variables <code className="text-indigo-400">VITE_SUPABASE_URL</code> and{' '}
-              <code className="text-indigo-400">VITE_SUPABASE_ANON_KEY</code> are set in your Vercel project settings.
+              Check that your <code className="text-indigo-400">VITE_FIREBASE_*</code> environment variables are properly set in your Vercel project settings.
             </p>
             <button
               onClick={() => window.location.reload()}

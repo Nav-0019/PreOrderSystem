@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../models/app_data.dart';
 import '../../models/menu_item.dart';
-import '../../services/supabase_service.dart';
+import '../../services/firebase_service.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
@@ -23,14 +22,13 @@ class _CustomerHomeState extends State<CustomerHome> {
   String _searchQuery = '';
   List<Outlet> _outlets = [];
   bool _isLoading = true;
-  late final Stream<List<Map<String, dynamic>>> _outletsStream;
+  late final Stream<List<Outlet>> _outletsStream;
 
   @override
   void initState() {
     super.initState();
-    _outletsStream = Supabase.instance.client.from('outlets').stream(primaryKey: ['id']).order('name');
-    _outletsStream.listen((_) async {
-      final fetchedOutlets = await SupabaseService.getOutlets();
+    _outletsStream = FirebaseService.streamOutlets();
+    _outletsStream.listen((fetchedOutlets) {
       if (!mounted) return;
       setState(() {
         _outlets = fetchedOutlets;

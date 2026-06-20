@@ -11,6 +11,10 @@ class UserProvider extends ChangeNotifier {
   String _role = 'student';
   String _name = '';
   String _email = '';
+  String? _phone;
+  String? _studentId;
+  String? _managedOutletId;
+  String? _registeredNumber;
   ThemeMode _themeMode = ThemeMode.light;
   bool _isPremium = false;
   DateTime? _premiumExpiry;
@@ -23,6 +27,10 @@ class UserProvider extends ChangeNotifier {
   String get role => _role;
   String get name => _name;
   String get email => _email;
+  String? get phone => _phone;
+  String? get studentId => _studentId;
+  String? get managedOutletId => _managedOutletId;
+  String? get registeredNumber => _registeredNumber;
   ThemeMode get themeMode => _themeMode;
   bool get isPremium => _isPremium;
   DateTime? get premiumExpiry => _premiumExpiry;
@@ -62,6 +70,10 @@ class UserProvider extends ChangeNotifier {
         _email = data['email'] ?? _firebaseUser?.email ?? '';
         _role = data['role'] ?? 'student';
         _isPremium = data['isPremium'] ?? false;
+        _phone = data['phone'];
+        _studentId = data['studentId'];
+        _managedOutletId = data['managedOutletId'];
+        _registeredNumber = data['registeredNumber'];
       } else {
         // Profile doc doesn't exist yet (Cloud Function may be delayed)
         // Use data directly from Firebase Auth
@@ -69,6 +81,10 @@ class UserProvider extends ChangeNotifier {
         _email = _firebaseUser?.email ?? '';
         _role = 'student';
         _isPremium = false;
+        _phone = null;
+        _studentId = null;
+        _managedOutletId = null;
+        _registeredNumber = null;
       }
     } catch (e) {
       debugPrint('Error loading user profile: $e');
@@ -79,6 +95,10 @@ class UserProvider extends ChangeNotifier {
     _role = 'student';
     _name = '';
     _email = '';
+    _phone = null;
+    _studentId = null;
+    _managedOutletId = null;
+    _registeredNumber = null;
     _isPremium = false;
     _premiumExpiry = null;
   }

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface OrderItem {
@@ -72,7 +72,35 @@ export default function LiveQueue() {
     };
     const next = statusMap[currentStatus];
     if (!next) return;
-    await updateDoc(doc(db, 'orders', id), { status: next });
+    try {
+      await runTransaction(db, async (transaction) => {
+        const orderRef = doc(db, 'orders', id);
+        const orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists()) return;
+        
+        const data = orderSnap.data();
+        const currentStatus = data.status;
+        const outletId = data.outletId;
+        
+        transaction.update(orderRef, { status: next });
+        
+        const wasActive = ['pending', 'prep', 'ready'].includes(currentStatus);
+        const isNowActive = ['pending', 'prep', 'ready'].includes(next);
+        
+        if (wasActive && !isNowActive && outletId) {
+          const outletRef = doc(db, 'outlets', outletId);
+          const outletSnap = await transaction.get(outletRef);
+          if (outletSnap.exists()) {
+            const currentQueue = outletSnap.data().queueCount || 0;
+            const newQueue = currentQueue > 0 ? currentQueue - 1 : 0;
+            const newWaitTime = newQueue === 0 ? 'No wait' : `${newQueue * 2}-${newQueue * 2 + 3} mins`;
+            transaction.update(outletRef, { queueCount: newQueue, waitTime: newWaitTime });
+          }
+        }
+      });
+    } catch (e) {
+      console.error('Error updating order:', e);
+    }
     // Firestore onSnapshot above will auto-update the UI
   };
 

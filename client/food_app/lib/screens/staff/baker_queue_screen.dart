@@ -32,7 +32,7 @@ class _BakerQueueScreenState extends State<BakerQueueScreen> {
                   children: [
                     const Text('MAIN CANTEEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary, letterSpacing: 1.2)),
                     const SizedBox(height: 4),
-                    const Text('Kitchen Queue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
+                    const Text('Order Management', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
                   ],
                 ),
                 GestureDetector(

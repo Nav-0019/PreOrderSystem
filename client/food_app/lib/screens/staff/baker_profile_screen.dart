@@ -35,8 +35,12 @@ class BakerProfileScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: AppTheme.primaryBg, borderRadius: BorderRadius.circular(999)),
-                  child: const Text('Baker / Staff', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                  child: const Text('Outlet Manager', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
                 ),
+                const SizedBox(height: 6),
+                if (user.registeredNumber != null)
+                  Text('Baker Reg. No. ${user.registeredNumber}',
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -58,6 +62,18 @@ class BakerProfileScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
+                Text('ACCOUNT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.dividerColor)),
+                  child: Column(
+                    children: [
+                      _infoRow(Icons.phone_outlined, 'Phone', user.phone ?? '—', theme),
+                      Divider(height: 1, color: theme.dividerColor),
+                      _infoRow(Icons.store_outlined, 'Managed Outlet', user.managedOutletId ?? '—', theme),
+                    ],
+                  ),
+                ),
                 
                 GestureDetector(
                   onTap: () {
@@ -73,12 +89,27 @@ class BakerProfileScreen extends StatelessWidget {
                       border: Border.all(color: AppTheme.red.withOpacity(0.3)),
                     ),
                     alignment: Alignment.center,
-                    child: const Text('End Shift & Log Out', style: TextStyle(color: AppTheme.red, fontWeight: FontWeight.w700)),
+                    child: const Text('Sign Out', style: TextStyle(color: AppTheme.red, fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.45)),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.55), fontWeight: FontWeight.w500)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
         ],
       ),
     );

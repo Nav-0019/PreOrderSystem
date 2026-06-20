@@ -4,6 +4,8 @@ import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/firebase_service.dart';
+import '../../models/menu_item.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,24 +18,43 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late TabController _tabController;
   String _selectedRole = 'student';
   bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  final _loginFormKey = GlobalKey<FormState>();
+  final _signUpFormKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _idController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _studentIdController = TextEditingController();
+  final _registeredNumberController = TextEditingController();
   final _registerPasswordController = TextEditingController();
+  
   final _loginEmailController = TextEditingController();
   final _loginPasswordController = TextEditingController();
 
+  String? _selectedOutletId;
+  List<Outlet> _outlets = [];
+
   final List<Map<String, dynamic>> _roles = [
     {'id': 'student', 'label': 'STUDENT', 'icon': Icons.school},
-    {'id': 'staff', 'label': 'STAFF', 'icon': Icons.kitchen},
-
+    {'id': 'manager', 'label': 'MANAGER', 'icon': Icons.manage_accounts},
   ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this, initialIndex: 1);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
+    _fetchOutlets();
+  }
+  
+  Future<void> _fetchOutlets() async {
+    final outlets = await FirebaseService.getOutlets();
+    if (mounted) {
+      setState(() {
+        _outlets = outlets;
+      });
+    }
   }
 
   @override
@@ -41,7 +62,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _tabController.dispose();
     _nameController.dispose();
     _emailController.dispose();
-    _idController.dispose();
+    _phoneController.dispose();
+    _studentIdController.dispose();
+    _registeredNumberController.dispose();
     _registerPasswordController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
@@ -49,17 +72,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _submitForm() async {
-    if (_nameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _registerPasswordController.text.trim().isEmpty) {
+    if (!_signUpFormKey.currentState!.validate()) return;
+
+    if (_selectedRole == 'manager' && _selectedOutletId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please fill out all fields.')));
+          const SnackBar(content: Text('Please select an outlet.')));
       return;
     }
 
     final email = _emailController.text.trim().toLowerCase();
     final password = _registerPasswordController.text.trim();
     final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final studentId = _studentIdController.text.trim();
+    final registeredNumber = _registeredNumberController.text.trim();
 
     if (_selectedRole == 'student' && !email.endsWith('@college.edu')) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -67,30 +93,36 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
 
+    setState(() => _isLoading = true);
+
     try {
-      // Create Firebase Auth user
       final credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      // Update display name
       await credential.user?.updateDisplayName(name);
 
-      // Write profile to Firestore (Cloud Function also does this, but
-      // writing here ensures immediate availability)
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(credential.user!.uid)
-          .set({
+      final userData = {
         'uid': credential.user!.uid,
         'name': name,
         'email': email,
+        'phone': phone,
         'role': _selectedRole,
         'isPremium': false,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      
+      if (_selectedRole == 'student') {
+        userData['studentId'] = studentId;
+      } else if (_selectedRole == 'manager') {
+        userData['managedOutletId'] = _selectedOutletId!;
+        userData['registeredNumber'] = registeredNumber;
+      }
 
-      // UserProvider listens to authStateChanges — no manual navigation needed.
-      // main.dart will route to MainShell automatically.
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(credential.user!.uid)
+          .set(userData);
+
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -99,24 +131,22 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _doLogin() async {
-    if (_loginEmailController.text.trim().isEmpty ||
-        _loginPasswordController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter email and password.')));
-      return;
-    }
+    if (!_loginFormKey.currentState!.validate()) return;
 
     final email = _loginEmailController.text.trim().toLowerCase();
     final password = _loginPasswordController.text.trim();
 
+    setState(() => _isLoading = true);
+    
     try {
       await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
-      // UserProvider listens to authStateChanges — routing handled automatically.
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,92 +155,195 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final email = _loginEmailController.text.trim().toLowerCase();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter your email address first.'),
+            behavior: SnackBarBehavior.floating,
+          ));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Password reset email sent! Check your inbox.'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.green,
+          ));
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message ?? 'Could not send reset email.'),
+            behavior: SnackBarBehavior.floating,
+          ));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Orange gradient header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(28, 70, 28, 70),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppTheme.primary, AppTheme.primaryDark],
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 86, height: 86,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.asset('assets/branding/AuraBake_logo.png', fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.white,
-                        alignment: Alignment.center,
-                        child: const Text('AB', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 26, color: AppTheme.primary)),
-                      ),
+    return Stack(
+      children: [
+        Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                // Orange gradient header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(28, 70, 28, 70),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppTheme.primary, AppTheme.primaryDark],
                     ),
                   ),
-                  const SizedBox(width: 20),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Aurabake', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.3)),
-                      const SizedBox(height: 4),
-                      Text('Your college canteen,\npre-ordered', style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.85), height: 1.3)),
+                      Container(
+                        width: 86, height: 86,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset('assets/branding/AuraBake_logo.png', fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: Colors.white,
+                            alignment: Alignment.center,
+                            child: const Text('AB', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 26, color: AppTheme.primary)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Aurabake', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.3)),
+                          const SizedBox(height: 4),
+                          Text('Your college canteen,\npre-ordered', style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.85), height: 1.3)),
+                        ],
+                      ),
                     ],
                   ),
-                ],
+                ),
+
+                // White card sheet
+                Container(
+                  transform: Matrix4.translationValues(0, -36, 0),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, -4))],
+                  ),
+                  child: Column(
+                    children: [
+                      // Tab bar
+                      TabBar(
+                        controller: _tabController,
+                        indicatorColor: AppTheme.primary,
+                        indicatorWeight: 3,
+                        labelColor: AppTheme.primary,
+                        unselectedLabelColor: theme.colorScheme.onSurface.withOpacity(0.4),
+                        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        tabs: const [Tab(text: 'Login'), Tab(text: 'Sign Up')],
+                      ),
+
+                      SizedBox(
+                        height: 580,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildLoginPanel(theme),
+                            _buildSignUpPanel(theme),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_isLoading)
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: const Center(
+              child: CircularProgressIndicator(color: AppTheme.primary),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLoginPanel(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Form(
+        key: _loginFormKey,
+        child: Column(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withOpacity(0.08)),
+              alignment: Alignment.center,
+              child: const Icon(Icons.lock_person_outlined, color: AppTheme.primary, size: 24),
+            ),
+            const SizedBox(height: 10),
+            Text('Login to your meal of the day!', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+            const SizedBox(height: 20),
+            _buildField(
+              icon: Icons.email_outlined, 
+              hint: 'Email', 
+              controller: _loginEmailController,
+              validator: (v) => v!.isEmpty ? 'Enter email' : null,
+            ),
+            const SizedBox(height: 12),
+            _buildField(
+              icon: Icons.lock_outline, 
+              hint: 'Password', 
+              controller: _loginPasswordController, 
+              isPassword: true,
+              validator: (v) => v!.isEmpty ? 'Enter password' : null,
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: _forgotPassword,
+                child: const Text('Forgot password?', style: TextStyle(fontSize: 13, color: AppTheme.primary, fontWeight: FontWeight.w600)),
               ),
             ),
-
-            // White card sheet
-            Container(
-              transform: Matrix4.translationValues(0, -36, 0),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, -4))],
-              ),
-              child: Column(
-                children: [
-                  // Tab bar
-                  TabBar(
-                    controller: _tabController,
-                    indicatorColor: AppTheme.primary,
-                    indicatorWeight: 3,
-                    labelColor: AppTheme.primary,
-                    unselectedLabelColor: theme.colorScheme.onSurface.withOpacity(0.4),
-                    labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                    tabs: const [Tab(text: 'Login'), Tab(text: 'Sign Up')],
-                  ),
-
-                  SizedBox(
-                    height: 520,
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildLoginPanel(theme),
-                        _buildSignUpPanel(theme),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 20),
+            _buildGradientButton('Sign In →', _doLogin),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text("Don't have an account? ", style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                GestureDetector(
+                  onTap: () => _tabController.animateTo(1),
+                  child: const Text('Sign Up', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                ),
+              ],
             ),
           ],
         ),
@@ -218,82 +351,117 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildLoginPanel(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withOpacity(0.08)),
-            alignment: Alignment.center,
-            child: const Icon(Icons.lock_person_outlined, color: AppTheme.primary, size: 24),
-          ),
-          const SizedBox(height: 10),
-          Text('Enter your credentials to access your dashboard', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.6))),
-          const SizedBox(height: 20),
-          _buildField(Icons.email_outlined, 'Email (e.g. staff@aurabake.com)', _loginEmailController),
-          const SizedBox(height: 12),
-          _buildField(Icons.lock_outline, 'Password (staff123)', _loginPasswordController, isPassword: true),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () {},
-              child: const Text('Forgot password?', style: TextStyle(fontSize: 13, color: AppTheme.primary, fontWeight: FontWeight.w600)),
-            ),
-          ),
-          const SizedBox(height: 20),
-          _buildGradientButton('Sign In →', _doLogin),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text("Don't have an account? ", style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
-              GestureDetector(
-                onTap: () => _tabController.animateTo(1),
-                child: const Text('Sign Up', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSignUpPanel(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              width: 48, height: 48,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withOpacity(0.08)),
-              alignment: Alignment.center,
-              child: const Icon(Icons.shield_outlined, color: AppTheme.primary, size: 24),
-            ),
-            const SizedBox(height: 10),
-            Text('Select your role to register:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface.withOpacity(0.6))),
-            const SizedBox(height: 16),
+      child: Form(
+        key: _signUpFormKey,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withOpacity(0.08)),
+                alignment: Alignment.center,
+                child: const Icon(Icons.shield_outlined, color: AppTheme.primary, size: 24),
+              ),
+              const SizedBox(height: 10),
+              Text('Select your role to register:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+              const SizedBox(height: 16),
 
-            // Role selector circles
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: _roles.map((r) => _buildRoleCircle(r, theme)).toList(),
-            ),
-            const SizedBox(height: 24),
+              // Role selector circles
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: _roles.map((r) => _buildRoleCircle(r, theme)).toList(),
+              ),
+              const SizedBox(height: 24),
 
-            _buildField(Icons.person_outline, 'Full Name', _nameController),
-            const SizedBox(height: 12),
-            _buildField(Icons.email_outlined, 'College Email', _emailController),
-            const SizedBox(height: 12),
-            _buildField(Icons.lock_outline, 'Create Password', _registerPasswordController, isPassword: true),
-            const SizedBox(height: 20),
-            _buildGradientButton('Sign Up →', _submitForm),
-            const SizedBox(height: 14),
-            Text('Need a different role? Tap to select above.', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.4))),
-          ],
+              _buildField(
+                icon: Icons.person_outline, 
+                hint: 'Full Name', 
+                controller: _nameController,
+                validator: (v) => v!.isEmpty ? 'Enter full name' : null,
+              ),
+              const SizedBox(height: 12),
+              _buildField(
+                icon: Icons.email_outlined, 
+                hint: _selectedRole == 'student' ? 'College Email (@college.edu)' : 'Email', 
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) {
+                  if (v!.isEmpty) return 'Enter email';
+                  if (_selectedRole == 'student' && !v.endsWith('@college.edu')) return 'Must use @college.edu';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildField(
+                icon: Icons.phone_outlined, 
+                hint: 'Phone Number', 
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                validator: (v) => v!.isEmpty ? 'Enter phone number' : null,
+              ),
+              const SizedBox(height: 12),
+              
+              if (_selectedRole == 'student') ...[
+                _buildField(
+                  icon: Icons.badge_outlined, 
+                  hint: 'Student ID', 
+                  controller: _studentIdController,
+                  validator: (v) => v!.isEmpty ? 'Enter Student ID' : null,
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              if (_selectedRole == 'manager') ...[
+                _buildField(
+                  icon: Icons.verified_user_outlined, 
+                  hint: 'Registered Baker Number', 
+                  controller: _registeredNumberController,
+                  validator: (v) => v!.isEmpty ? 'Enter Baker Number' : null,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: theme.dividerColor, width: 1.5),
+                    borderRadius: BorderRadius.circular(12),
+                    color: theme.cardColor,
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      hint: Text('Select Managed Outlet', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 14)),
+                      value: _selectedOutletId,
+                      icon: Icon(Icons.arrow_drop_down, color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                      items: _outlets.map((outlet) {
+                        return DropdownMenuItem<String>(
+                          value: outlet.id,
+                          child: Text(outlet.name, style: const TextStyle(fontSize: 14)),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _selectedOutletId = val),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              _buildField(
+                icon: Icons.lock_outline, 
+                hint: 'Create Password', 
+                controller: _registerPasswordController, 
+                isPassword: true,
+                validator: (v) => v!.length < 6 ? 'Password must be at least 6 chars' : null,
+              ),
+              const SizedBox(height: 20),
+              _buildGradientButton('Sign Up →', _submitForm),
+              const SizedBox(height: 14),
+              Text('Need a different role? Tap to select above.', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -302,7 +470,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   Widget _buildRoleCircle(Map<String, dynamic> role, ThemeData theme) {
     final isSelected = _selectedRole == role['id'];
     return GestureDetector(
-      onTap: () => setState(() => _selectedRole = role['id']),
+      onTap: () {
+        setState(() {
+          _selectedRole = role['id'];
+          // Clear role-specific fields
+          _studentIdController.clear();
+          _registeredNumberController.clear();
+          _selectedOutletId = null;
+        });
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: Column(
@@ -325,42 +501,50 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildField(IconData icon, String hint, TextEditingController controller, {bool isPassword = false}) {
+  Widget _buildField({
+    required IconData icon, 
+    required String hint, 
+    required TextEditingController controller, 
+    bool isPassword = false,
+    String? Function(String?)? validator,
+    TextInputType? keyboardType,
+  }) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor, width: 1.5),
-        borderRadius: BorderRadius.circular(12),
-        color: theme.cardColor,
-      ),
-      child: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 14),
-            child: Icon(icon, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.4)),
-          ),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              obscureText: isPassword && _obscurePassword,
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-              ),
-            ),
-          ),
-          if (isPassword)
-            GestureDetector(
-              onTap: () => setState(() => _obscurePassword = !_obscurePassword),
-              child: Padding(
-                padding: const EdgeInsets.only(right: 14),
+    return TextFormField(
+      controller: controller,
+      obscureText: isPassword && _obscurePassword,
+      style: const TextStyle(fontSize: 14),
+      keyboardType: keyboardType,
+      validator: validator,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+        prefixIcon: Icon(icon, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.4)),
+        suffixIcon: isPassword
+            ? GestureDetector(
+                onTap: () => setState(() => _obscurePassword = !_obscurePassword),
                 child: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.4)),
-              ),
-            ),
-        ],
+              )
+            : null,
+        filled: true,
+        fillColor: theme.cardColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: theme.dividerColor, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
   }

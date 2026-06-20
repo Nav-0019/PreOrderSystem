@@ -2,46 +2,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper functions for role checks without custom claims
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isManagerOrAdmin() {
+      return request.auth != null && getUserRole() in ['manager', 'admin', 'staff'];
+    }
+
+    function isAdmin() {
+      return request.auth != null && getUserRole() == 'admin';
+    }
+
     // ── Users ───────────────────────────────────────────────
-    // Users can only read/write their own profile.
-    // Staff and admin can read any user profile.
     match /users/{uid} {
-      allow read: if request.auth != null &&
-        (request.auth.uid == uid ||
-         request.auth.token.role in ['staff', 'admin']);
+      allow read: if request.auth != null && (request.auth.uid == uid || isManagerOrAdmin());
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
     // ── Outlets ─────────────────────────────────────────────
-    // Anyone (even unauthenticated) can read outlets.
-    // Only admins can create/update/delete outlets.
     match /outlets/{outletId} {
       allow read: if true;
-      allow write: if request.auth != null &&
-        request.auth.token.role == 'admin';
+      allow write: if request.auth != null && (isAdmin() || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['queueCount', 'waitTime']));
 
       // Menu items (subcollection of outlets)
       match /menu_items/{itemId} {
         allow read: if true;
-        allow write: if request.auth != null &&
-          request.auth.token.role in ['staff', 'admin'];
+        allow write: if isManagerOrAdmin();
       }
     }
 
     // ── Orders ──────────────────────────────────────────────
-    // Students: read and create their own orders.
-    // Staff/admin: read and update all orders.
     match /orders/{orderId} {
-      allow read: if request.auth != null &&
-        (resource.data.userId == request.auth.uid ||
-         request.auth.token.role in ['staff', 'admin']);
-
-      allow create: if request.auth != null &&
-        request.resource.data.userId == request.auth.uid;
-
-      allow update: if request.auth != null &&
-        request.auth.token.role in ['staff', 'admin'];
-
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isManagerOrAdmin());
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if isManagerOrAdmin();
       allow delete: if false; // Never delete orders
     }
   }

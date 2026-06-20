@@ -40,15 +40,15 @@ class _MainShellState extends State<MainShell> {
     final List<Widget> pages;
     final List<_NavItemData> navItems;
 
-    if (role == 'staff') {
+    if (role == 'manager') {
       pages = const [
         BakerQueueScreen(),
         BakerInventoryScreen(),
         BakerProfileScreen(),
       ];
       navItems = [
-        _NavItemData(Icons.kitchen_outlined, 'Queue'),
-        _NavItemData(Icons.inventory_2_outlined, 'Stock'),
+        _NavItemData(Icons.receipt_long_outlined, 'Orders'),
+        _NavItemData(Icons.inventory_2_outlined, 'Inventory'),
         _NavItemData(Icons.person_outline, 'Profile'),
       ];
     } else {
@@ -93,7 +93,7 @@ class _MainShellState extends State<MainShell> {
                 return _buildNavButton(navItems[i], i, theme);
               }),
               // Cart button for non-staff roles (between Orders and Chat)
-              if (role != 'staff')
+              if (role != 'manager')
                 _buildCartButton(theme),
             ]..sort((a, b) {
               // Reorder to put cart in the middle

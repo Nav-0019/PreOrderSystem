@@ -99,6 +99,7 @@ class FirebaseService {
   /// The Cloud Function onOrderWrite will auto-update the outlet queue.
   static Future<String?> placeOrder({
     required String outletId,
+    required String outletName,
     required double totalAmount,
     required List<Map<String, dynamic>> items,
   }) async {
@@ -109,19 +110,37 @@ class FirebaseService {
         return null;
       }
 
-      // Create the order document
-      final orderRef = await _db.collection('orders').add({
-        'userId': user.uid,
-        'outletId': outletId,
-        'totalAmount': totalAmount,
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
-        'items': items.map((item) => {
-          'menuItemId': item['id'],
-          'name': item['name'],
-          'quantity': item['quantity'],
-          'unitPrice': item['price'],
-        }).toList(),
+      final orderRef = _db.collection('orders').doc();
+      final outletRef = _db.collection('outlets').doc(outletId);
+
+      await _db.runTransaction((transaction) async {
+        // 1. Read outlet current queue
+        final outletSnap = await transaction.get(outletRef);
+        final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
+        final newQueue = currentQueue + 1;
+        final newWaitTime = '${newQueue * 2}-${newQueue * 2 + 3} mins';
+
+        // 2. Write order document
+        transaction.set(orderRef, {
+          'userId': user.uid,
+          'outletId': outletId,
+          'outletName': outletName,
+          'totalAmount': totalAmount,
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+          'items': items.map((item) => {
+            'menuItemId': item['id'],
+            'name': item['name'],
+            'quantity': item['quantity'],
+            'unitPrice': item['price'],
+          }).toList(),
+        });
+
+        // 3. Increment outlet queue
+        transaction.update(outletRef, {
+          'queueCount': newQueue,
+          'waitTime': newWaitTime,
+        });
       });
 
       debugPrint('Order placed: ${orderRef.id}');
@@ -147,6 +166,20 @@ class FirebaseService {
             .toList());
   }
 
+  /// Stream a single order by ID
+  static Stream<List<Map<String, dynamic>>> streamSingleOrder(String orderId) {
+    return _db
+        .collection('orders')
+        .doc(orderId)
+        .snapshots()
+        .map((snap) {
+          if (snap.exists && snap.data() != null) {
+            return [{'id': snap.id, ...snap.data()!}];
+          }
+          return [];
+        });
+  }
+
   /// Stream ALL orders for a given outlet (for staff/admin).
   static Stream<List<Map<String, dynamic>>> streamOutletOrders(String outletId) {
     return _db
@@ -162,7 +195,41 @@ class FirebaseService {
 
   /// Update order status (staff/admin).
   static Future<void> updateOrderStatus(String orderId, String status) async {
-    await _db.collection('orders').doc(orderId).update({'status': status});
+    try {
+      final orderRef = _db.collection('orders').doc(orderId);
+
+      await _db.runTransaction((transaction) async {
+        final orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists) return;
+
+        final data = orderSnap.data()!;
+        final currentStatus = data['status'] as String?;
+        final outletId = data['outletId'] as String?;
+
+        if (outletId == null || currentStatus == null) return;
+
+        transaction.update(orderRef, {'status': status});
+
+        // If transitioning from active ('pending', 'prep', 'ready') to inactive
+        final wasActive = ['pending', 'prep', 'ready'].contains(currentStatus);
+        final isNowActive = ['pending', 'prep', 'ready'].contains(status);
+
+        if (wasActive && !isNowActive) {
+          final outletRef = _db.collection('outlets').doc(outletId);
+          final outletSnap = await transaction.get(outletRef);
+          final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
+          final newQueue = (currentQueue > 0) ? currentQueue - 1 : 0;
+          final newWaitTime = newQueue == 0 ? 'No wait' : '${newQueue * 2}-${newQueue * 2 + 3} mins';
+
+          transaction.update(outletRef, {
+            'queueCount': newQueue,
+            'waitTime': newWaitTime,
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Error updating order status: $e');
+    }
   }
 
   // ── Menu Management (admin) ───────────────────────────────
