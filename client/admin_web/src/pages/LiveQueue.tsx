@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDoc, runTransaction } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface OrderItem {
