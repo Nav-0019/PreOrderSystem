@@ -18,13 +18,24 @@ const db = getFirestore(app);
 async function createAdmin() {
   console.log("🔐 Creating Master Admin Account...");
   try {
-    const email = "admin@aurabake.com";
-    const password = "admin123";
+    const email = "shubhamchauhan0019@gmail.com";
+    const password = "aurabake0019";
 
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const uid = userCredential.user.uid;
-
-    console.log(`✅ Auth created. UID: ${uid}`);
+    let uid;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      uid = userCredential.user.uid;
+      console.log(`✅ Auth created. UID: ${uid}`);
+    } catch (e) {
+      if (e.code === 'auth/email-already-in-use') {
+        console.log(`Email already exists. Signing in to grant admin access...`);
+        const { signInWithEmailAndPassword } = await import('firebase/auth');
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        uid = userCredential.user.uid;
+      } else {
+        throw e;
+      }
+    }
 
     // Create the user profile in Firestore with role 'admin'
     await setDoc(doc(db, 'users', uid), {
@@ -36,8 +47,8 @@ async function createAdmin() {
     });
 
     console.log("✅ Admin user profile created in Firestore!");
-    console.log("Email: admin@aurabake.com");
-    console.log("Password: admin123");
+    console.log("Email: shubhamchauhan0019@gmail.com");
+    console.log("Password: aurabake0019");
     process.exit(0);
   } catch (err) {
     console.error("❌ Error creating admin:", err);
