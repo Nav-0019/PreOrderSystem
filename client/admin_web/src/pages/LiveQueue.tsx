@@ -1,18 +1,23 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDoc, runTransaction } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface OrderItem {
   quantity: number;
-  menu_items: { name: string };
+  name: string;
+  menuItemId: string;
 }
 
 interface Order {
   id: string;
   status: string;
-  total_amount: number;
-  users: { name: string; is_premium: boolean };
-  order_items: OrderItem[];
+  totalAmount: number;
+  userId: string;
+  outletId: string;
+  items: OrderItem[];
+  userName?: string;
+  isPremium?: boolean;
 }
 
 export default function LiveQueue() {
@@ -20,56 +25,83 @@ export default function LiveQueue() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchOrders();
+    // Real-time listener — active orders only, sorted by creation time
+    const q = query(
+      collection(db, 'orders'),
+      where('status', 'in', ['pending', 'prep', 'ready']),
+      orderBy('createdAt', 'asc')
+    );
 
-    const channel = supabase.channel('public:orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
-        console.log('Order change received!', payload);
-        fetchOrders(); // Refetch to get joined data easily, or manually update state
-      })
-      .subscribe();
+    const unsub = onSnapshot(q, async (snap) => {
+      const rawOrders = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      // Enrich with user names from users collection (batch fetch unique user IDs)
+      const userIds = [...new Set(rawOrders.map((o: any) => o.userId))];
+      const userMap: Record<string, { name: string; isPremium: boolean }> = {};
+
+      // Fetch user docs in parallel
+      await Promise.all(
+        userIds.map(async (uid) => {
+          const userDoc = await getDoc(doc(db, 'users', uid as string));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            userMap[uid as string] = {
+              name: data.name || 'Unknown',
+              isPremium: data.isPremium || false,
+            };
+          }
+        })
+      );
+
+      setOrders(rawOrders.map((o: any) => ({
+        ...o,
+        userName: userMap[o.userId]?.name || 'Unknown',
+        isPremium: userMap[o.userId]?.isPremium || false,
+      })));
+      setLoading(false);
+    });
+
+    return () => unsub();
   }, []);
-
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        status,
-        total_amount,
-        users (name, is_premium),
-        order_items (
-          quantity,
-          menu_items (name)
-        )
-      `)
-      .neq('status', 'completed')
-      .neq('status', 'cancelled')
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching orders:', error);
-    } else {
-      setOrders(data as any);
-    }
-    setLoading(false);
-  };
 
   const advanceStatus = async (id: string, currentStatus: string) => {
     const statusMap: Record<string, string> = {
-      'pending': 'prep',
-      'prep': 'ready',
-      'ready': 'completed'
+      pending: 'prep',
+      prep: 'ready',
+      ready: 'completed',
     };
     const next = statusMap[currentStatus];
     if (!next) return;
-
-    const { error } = await supabase.from('orders').update({ status: next }).eq('id', id);
-    if (error) console.error('Error updating status', error);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const orderRef = doc(db, 'orders', id);
+        const orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists()) return;
+        
+        const data = orderSnap.data();
+        const currentStatus = data.status;
+        const outletId = data.outletId;
+        
+        transaction.update(orderRef, { status: next });
+        
+        const wasActive = ['pending', 'prep', 'ready'].includes(currentStatus);
+        const isNowActive = ['pending', 'prep', 'ready'].includes(next);
+        
+        if (wasActive && !isNowActive && outletId) {
+          const outletRef = doc(db, 'outlets', outletId);
+          const outletSnap = await transaction.get(outletRef);
+          if (outletSnap.exists()) {
+            const currentQueue = outletSnap.data().queueCount || 0;
+            const newQueue = currentQueue > 0 ? currentQueue - 1 : 0;
+            const newWaitTime = newQueue === 0 ? 'No wait' : `${newQueue * 2}-${newQueue * 2 + 3} mins`;
+            transaction.update(outletRef, { queueCount: newQueue, waitTime: newWaitTime });
+          }
+        }
+      });
+    } catch (e) {
+      console.error('Error updating order:', e);
+    }
+    // Firestore onSnapshot above will auto-update the UI
   };
 
   return (
@@ -85,8 +117,7 @@ export default function LiveQueue() {
         ) : orders.length === 0 ? (
           <p className="text-zinc-500">No active orders right now.</p>
         ) : orders.map((order, i) => {
-          const isPremium = order.users?.is_premium;
-          const details = order.order_items?.map(oi => `${oi.quantity}x ${oi.menu_items?.name}`).join(', ');
+          const details = order.items?.map(item => `${item.quantity}x ${item.name}`).join(', ');
 
           return (
             <motion.div
@@ -94,20 +125,21 @@ export default function LiveQueue() {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.1 }}
-              className={`p-6 bg-zinc-900/50 border rounded-2xl backdrop-blur-xl ${isPremium ? 'border-amber-500/30' : 'border-zinc-800'}`}
+              className={`p-6 bg-zinc-900/50 border rounded-2xl backdrop-blur-xl ${order.isPremium ? 'border-amber-500/30' : 'border-zinc-800'}`}
             >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-lg font-bold">
-                    #{order.id.split('-')[0]} • {order.users?.name || 'Unknown'} 
-                    {isPremium && <span className="ml-2 text-amber-500 text-sm">✦ Premium</span>}
+                    #{order.id.slice(0, 6)} • {order.userName}
+                    {order.isPremium && <span className="ml-2 text-amber-500 text-sm">✦ Premium</span>}
                   </p>
                   <p className="text-zinc-400 mt-1">{details || 'No items'}</p>
+                  <p className="text-zinc-500 text-sm mt-1">₹{order.totalAmount}</p>
                 </div>
                 <button
                   onClick={() => advanceStatus(order.id, order.status)}
                   className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors hover:brightness-125 ${
-                    order.status === 'prep' ? 'bg-indigo-500/10 text-indigo-400' 
+                    order.status === 'prep' ? 'bg-indigo-500/10 text-indigo-400'
                     : order.status === 'ready' ? 'bg-emerald-500/10 text-emerald-400'
                     : 'bg-zinc-800 text-zinc-400'
                   }`}

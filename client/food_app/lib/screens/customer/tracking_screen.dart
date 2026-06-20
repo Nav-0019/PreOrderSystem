@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/firebase_service.dart';
 import '../../theme/app_theme.dart';
 
 class TrackingScreen extends StatefulWidget {
@@ -18,10 +18,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   void initState() {
     super.initState();
-    _orderStream = Supabase.instance.client
-        .from('orders')
-        .stream(primaryKey: ['id'])
-        .eq('id', widget.orderId);
+    _orderStream = FirebaseService.streamSingleOrder(widget.orderId);
 
     _orderStream.listen((data) {
       if (data.isNotEmpty && mounted) {

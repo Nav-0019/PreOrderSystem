@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
-import '../../services/supabase_service.dart';
+import '../../services/firebase_service.dart';
 import 'tracking_screen.dart';
 
 class CartScreen extends StatefulWidget {
@@ -27,10 +27,15 @@ class _CartScreenState extends State<CartScreen> {
 
     setState(() => _isSubmitting = true);
 
-    final orderId = await SupabaseService.placeOrder(
+    if (cart.currentOutletId == null) return; // Should not happen if cart is not empty
+    
+    final orderId = await FirebaseService.placeOrder(
+      outletId: cart.currentOutletId!,
+      outletName: cart.currentOutletName!,
       totalAmount: total,
       items: cart.items.values.map((i) => {
         'id': i.id,
+        'name': i.name,
         'quantity': i.quantity,
         'price': i.price,
       }).toList(),

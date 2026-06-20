@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "556776901551",
+    "project_id": "aurabake",
+    "storage_bucket": "aurabake.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:556776901551:android:07c791e12790eb031d7d5a",
+        "android_client_info": {
+          "package_name": "com.example.food_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAucEhM-Kuc6uO0599UcafCG2BbnX1AMHE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

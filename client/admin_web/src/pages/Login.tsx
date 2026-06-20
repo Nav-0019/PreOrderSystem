@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { auth } from '../lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { motion } from 'framer-motion';
 import { ChefHat, Loader2 } from 'lucide-react';
 
@@ -13,16 +14,15 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
 
-    if (error) {
-      setError(error.message);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      // App.tsx onAuthStateChanged handles redirect automatically
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

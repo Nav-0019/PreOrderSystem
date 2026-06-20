@@ -10,12 +10,19 @@ class CartItem {
 
 class CartProvider extends ChangeNotifier {
   final Map<String, CartItem> _items = {};
+  String? currentOutletId;
+  String? currentOutletName;
 
   Map<String, CartItem> get items => _items;
   int get itemCount => _items.values.fold(0, (sum, item) => sum + item.quantity);
   double get totalAmount => _items.values.fold(0.0, (sum, item) => sum + (item.price * item.quantity));
 
-  void addItem(String id, String name, double price) {
+  void addItem(String id, String name, double price, {String? outletId, String? outletName}) {
+    if (outletId != null && currentOutletId != outletId) {
+      _items.clear();
+      currentOutletId = outletId;
+      currentOutletName = outletName;
+    }
     if (_items.containsKey(id)) {
       _items[id]!.quantity += 1;
     } else {
@@ -36,6 +43,8 @@ class CartProvider extends ChangeNotifier {
 
   void clear() {
     _items.clear();
+    currentOutletId = null;
+    currentOutletName = null;
     notifyListeners();
   }
 }

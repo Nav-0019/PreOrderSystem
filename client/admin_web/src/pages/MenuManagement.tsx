@@ -1,12 +1,14 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { collectionGroup, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface MenuItem {
   id: string;
+  outletId: string;
   name: string;
   price: number;
-  is_available: boolean;
+  isAvailable: boolean;
 }
 
 export default function MenuManagement() {
@@ -18,25 +20,29 @@ export default function MenuManagement() {
   }, []);
 
   const fetchMenu = async () => {
-    const { data, error } = await supabase.from('menu_items').select('*').order('name');
-    if (error) {
-      console.error('Error fetching menu:', error);
-    } else {
-      setItems(data || []);
-    }
+    // collectionGroup queries across all outlets' menu_items subcollections
+    const snap = await getDocs(collectionGroup(db, 'menu_items'));
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as MenuItem));
+    data.sort((a, b) => a.name.localeCompare(b.name));
+    setItems(data);
     setLoading(false);
   };
 
-  const toggleAvailability = async (id: string, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
-    // Optimistic update
-    setItems(items.map(item => item.id === id ? { ...item, is_available: newStatus } : item));
-    
-    const { error } = await supabase.from('menu_items').update({ is_available: newStatus }).eq('id', id);
-    if (error) {
-      console.error('Error updating availability:', error);
+  const toggleAvailability = async (item: MenuItem) => {
+    const newStatus = !item.isAvailable;
+    // Optimistic UI update
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, isAvailable: newStatus } : i));
+
+    try {
+      // Path: outlets/{outletId}/menu_items/{itemId}
+      await updateDoc(
+        doc(db, 'outlets', item.outletId, 'menu_items', item.id),
+        { isAvailable: newStatus }
+      );
+    } catch (e) {
+      console.error('Failed to update availability:', e);
       // Revert on error
-      setItems(items.map(item => item.id === id ? { ...item, is_available: currentStatus } : item));
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, isAvailable: item.isAvailable } : i));
     }
   };
 
@@ -64,15 +70,17 @@ export default function MenuManagement() {
             className="p-6 bg-zinc-900/50 border border-zinc-800 rounded-2xl backdrop-blur-xl flex justify-between items-center"
           >
             <div>
-              <p className={`text-lg font-semibold ${item.is_available ? 'text-white' : 'text-zinc-500 line-through'}`}>{item.name}</p>
+              <p className={`text-lg font-semibold ${item.isAvailable ? 'text-white' : 'text-zinc-500 line-through'}`}>
+                {item.name}
+              </p>
               <p className="text-zinc-400">₹{item.price}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="sr-only peer" 
-                checked={item.is_available} 
-                onChange={() => toggleAvailability(item.id, item.is_available)}
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={item.isAvailable}
+                onChange={() => toggleAvailability(item)}
               />
               <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
             </label>
