@@ -54,6 +54,24 @@ class FirebaseService {
     }
   }
 
+  /// Create a new outlet
+  static Future<String?> createOutlet(String name, String tagline) async {
+    try {
+      final docRef = await _db.collection('outlets').add({
+        'name': name,
+        'tagline': tagline,
+        'isOpen': true,
+        'queueCount': 0,
+        'waitTime': 'No wait',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return docRef.id;
+    } catch (e) {
+      debugPrint('Error creating outlet: $e');
+      return null;
+    }
+  }
+
   /// Real-time stream: outlets update live as queueCount changes.
   static Stream<List<Outlet>> streamOutlets() {
     return _db.collection('outlets').snapshots().asyncMap((snapshot) async {
@@ -159,11 +177,17 @@ class FirebaseService {
     return _db
         .collection('orders')
         .where('userId', isEqualTo: user.uid)
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => {'id': d.id, ...d.data()})
-            .toList());
+        .map((snap) {
+          final docs = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+          // Client-side sort: newest first
+          docs.sort((a, b) {
+            final at = (a['createdAt'] as dynamic)?.millisecondsSinceEpoch ?? 0;
+            final bt = (b['createdAt'] as dynamic)?.millisecondsSinceEpoch ?? 0;
+            return bt.compareTo(at);
+          });
+          return docs;
+        });
   }
 
   /// Stream a single order by ID
@@ -182,15 +206,25 @@ class FirebaseService {
 
   /// Stream ALL orders for a given outlet (for staff/admin).
   static Stream<List<Map<String, dynamic>>> streamOutletOrders(String outletId) {
+    if (outletId.trim().isEmpty) return const Stream.empty();
     return _db
         .collection('orders')
         .where('outletId', isEqualTo: outletId)
-        .where('status', whereIn: ['pending', 'prep', 'ready'])
-        .orderBy('createdAt')
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => {'id': d.id, ...d.data()})
-            .toList());
+        .map((snap) {
+          final docs = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+          // Client-side filter for active statuses + sort oldest first
+          final active = docs.where((d) {
+            final status = d['status'] as String? ?? '';
+            return ['pending', 'prep', 'ready'].contains(status);
+          }).toList();
+          active.sort((a, b) {
+            final at = (a['createdAt'] as dynamic)?.millisecondsSinceEpoch ?? 0;
+            final bt = (b['createdAt'] as dynamic)?.millisecondsSinceEpoch ?? 0;
+            return at.compareTo(bt);
+          });
+          return active;
+        });
   }
 
   /// Update order status (staff/admin).
@@ -234,13 +268,43 @@ class FirebaseService {
 
   // ── Menu Management (admin) ───────────────────────────────
 
+  /// Real-time stream of menu items for a given outlet.
+  static Stream<List<Map<String, dynamic>>> streamMenuItems(String outletId) {
+    if (outletId.trim().isEmpty) return const Stream.empty();
+    return _db
+        .collection('outlets')
+        .doc(outletId)
+        .collection('menu_items')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => {'id': d.id, ...d.data()})
+            .toList());
+  }
+
   static Future<void> addMenuItem(
       String outletId, Map<String, dynamic> item) async {
+    if (outletId.trim().isEmpty) return;
     await _db
         .collection('outlets')
         .doc(outletId)
         .collection('menu_items')
-        .add({...item, 'outletId': outletId});
+        .add({
+          ...item,
+          'outletId': outletId,
+          'isAvailable': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+  }
+
+  static Future<void> updateMenuItemAvailability(
+      String outletId, String itemId, bool isAvailable) async {
+    if (outletId.trim().isEmpty || itemId.trim().isEmpty) return;
+    await _db
+        .collection('outlets')
+        .doc(outletId)
+        .collection('menu_items')
+        .doc(itemId)
+        .update({'isAvailable': isAvailable});
   }
 
   static Future<void> updateMenuItem(
@@ -260,5 +324,18 @@ class FirebaseService {
         .collection('menu_items')
         .doc(itemId)
         .delete();
+  }
+
+  /// Update manager's outlet info (isOpen, waitTime, etc)
+  static Future<void> updateOutlet(String outletId, Map<String, dynamic> data) async {
+    if (outletId.trim().isEmpty) return;
+    await _db.collection('outlets').doc(outletId).update(data);
+  }
+
+  /// Update a user's profile (e.g. photoBase64)
+  static Future<void> updateUserProfile(Map<String, dynamic> data) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    await _db.collection('users').doc(user.uid).update(data);
   }
 }

@@ -7,6 +7,8 @@ class MenuItem {
   final double price;
   final String category;
   final IconData icon; // Upgraded from emoji to IconData
+  final int prepTime; // Average prep time in minutes
+  final String? photoBase64; // Base64 compressed image
   bool isAvailable;
 
   MenuItem({
@@ -16,6 +18,8 @@ class MenuItem {
     required this.price,
     required this.category,
     required this.icon,
+    this.prepTime = 5,
+    this.photoBase64,
     this.isAvailable = true,
   });
 }

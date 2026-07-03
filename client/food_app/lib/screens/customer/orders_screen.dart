@@ -13,31 +13,18 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
-  List<dynamic> _orders = [];
-  bool _isLoading = true;
   late final Stream<List<Map<String, dynamic>>> _ordersStream;
 
   @override
   void initState() {
     super.initState();
     _ordersStream = FirebaseService.streamMyOrders();
-
-    _ordersStream.listen((data) {
-      if (mounted) {
-        setState(() {
-          _orders = data;
-          _isLoading = false;
-        });
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     
-    final activeOrders = _orders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').toList();
-    final pastOrders = _orders.where((o) => o['status'] == 'completed' || o['status'] == 'cancelled').toList();
 
     return Scaffold(
       body: Column(
@@ -50,26 +37,39 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           Divider(height: 1, color: theme.dividerColor),
           Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator()) 
-              : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                if (activeOrders.isNotEmpty) ...[
-                  Text('ACTIVE ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
-                  const SizedBox(height: 12),
-                  ...activeOrders.map((o) => _ActiveOrderCard(order: o)),
-                  const SizedBox(height: 20),
-                ],
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _ordersStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-                if (pastOrders.isNotEmpty) ...[
-                  Text('PAST ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
-                  const SizedBox(height: 12),
-                  ...pastOrders.map((o) => _PastOrderCard(order: o, theme: theme)),
-                ] else if (activeOrders.isEmpty) ...[
-                  const Center(child: Text('No orders yet.')),
-                ]
-              ],
+                final _orders = snapshot.data ?? [];
+                final activeOrders = _orders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').toList();
+                final pastOrders = _orders.where((o) => o['status'] == 'completed' || o['status'] == 'cancelled').toList();
+
+                if (_orders.isEmpty) {
+                  return const Center(child: Text('No orders yet.'));
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    if (activeOrders.isNotEmpty) ...[
+                      Text('ACTIVE ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
+                      const SizedBox(height: 12),
+                      ...activeOrders.map((o) => _ActiveOrderCard(order: o)),
+                      const SizedBox(height: 20),
+                    ],
+
+                    if (pastOrders.isNotEmpty) ...[
+                      Text('PAST ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
+                      const SizedBox(height: 12),
+                      ...pastOrders.map((o) => _PastOrderCard(order: o, theme: theme)),
+                    ],
+                  ],
+                );
+              },
             ),
           ),
         ],

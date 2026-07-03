@@ -104,7 +104,7 @@ class _OtpScreenState extends State<OtpScreen> {
                   const SizedBox(height: 12),
                   Text('Code sent to', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
                   const SizedBox(height: 2),
-                  const Text('john@college.edu', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const Text('john@presidencyuniversity.in', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 28),
 
                   // OTP boxes
