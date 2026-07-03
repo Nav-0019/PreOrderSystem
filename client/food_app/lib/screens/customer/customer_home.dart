@@ -55,6 +55,22 @@ class _CustomerHomeState extends State<CustomerHome> {
     o.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
     o.tagline.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
+  String _calculateAvgWait(bool isPremium) {
+    final openOutlets = _filtered.where((o) => o.isOpen).toList();
+    if (openOutlets.isEmpty) return 'Closed';
+    int totalWait = 0;
+    for (var o in openOutlets) {
+      totalWait += o.queueCount * 2;
+    }
+    int avgWait = (totalWait / openOutlets.length).ceil();
+    if (avgWait == 0) return 'No wait';
+    if (isPremium) {
+      avgWait = (avgWait / 2).ceil();
+      if (avgWait == 0) avgWait = 1;
+    }
+    return '~$avgWait m';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -186,7 +202,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                     const SizedBox(width: 10),
                     _statCard('${_filtered.fold(0, (sum, o) => sum + o.queueCount)}', 'In queue', theme),
                     const SizedBox(width: 10),
-                    _statCard(user.isPremium ? '~4m' : '8m', 'Avg wait', theme),
+                    _statCard(_calculateAvgWait(user.isPremium), 'Avg wait', theme),
                   ],
                 ),
                 const SizedBox(height: 20),

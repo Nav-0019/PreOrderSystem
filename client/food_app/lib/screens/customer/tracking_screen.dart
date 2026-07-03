@@ -24,9 +24,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
       if (data.isNotEmpty && mounted) {
         final status = data[0]['status'] as String;
         setState(() {
-          if (status == 'pending') _step = 0;
-          else if (status == 'prep') _step = 2; // skip 1 for simplicity
-          else if (status == 'ready') _step = 3;
+          if (status == 'pending') _step = 1; // Ordered -> In Queue
+          else if (status == 'prep') _step = 2; // Preparing
+          else if (status == 'ready') _step = 3; // Ready
           else if (status == 'completed') _step = 3;
           else if (status == 'cancelled') _step = 0;
           _isLoading = false;
@@ -110,9 +110,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
                 Row(
                   children: [
-                    Expanded(child: _infoCard('Est. Pickup', _step == 3 ? 'Now' : '~10 min', theme)),
+                    Expanded(child: _infoCard('Est. Pickup', _step == 3 ? 'Now' : _step == 2 ? '~5 min' : '~10 min', theme)),
                     const SizedBox(width: 12),
-                    Expanded(child: _infoCard('Counter', 'Main', theme)),
+                    Expanded(child: _infoCard('Counter', 'Counter 1', theme)),
                   ],
                 ),
                 const SizedBox(height: 20),

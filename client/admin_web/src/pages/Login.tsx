@@ -16,7 +16,16 @@ export default function Login() {
     setError(null);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+      // Verify Role
+      const userDocRef = doc(db, 'users', userCredential.user.uid);
+      const docSnap = await getDoc(userDocRef);
+
+      if (!docSnap.exists() || docSnap.data().role !== 'admin') {
+        await auth.signOut();
+        throw new Error('Access Denied. Administrator only.');
+      }
       // App.tsx onAuthStateChanged handles redirect automatically
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -30,8 +39,8 @@ export default function Login() {
       {/* Background gradients */}
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/20 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/20 blur-[120px] rounded-full pointer-events-none" />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-2xl p-8 shadow-2xl relative z-10"
@@ -52,8 +61,8 @@ export default function Login() {
           )}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Email</label>
-            <input 
-              type="email" 
+            <input
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-zinc-950/50 border border-zinc-800 focus:border-indigo-500 rounded-lg px-4 py-2.5 text-white outline-none transition-colors"
@@ -63,8 +72,8 @@ export default function Login() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-zinc-950/50 border border-zinc-800 focus:border-indigo-500 rounded-lg px-4 py-2.5 text-white outline-none transition-colors"
@@ -72,8 +81,8 @@ export default function Login() {
               required
             />
           </div>
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center mt-6"
           >

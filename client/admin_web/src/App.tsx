@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { auth } from './lib/firebase';
+import { auth, db } from './lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import Login from './pages/Login';
 import DashboardLayout from './components/DashboardLayout';
@@ -15,8 +16,34 @@ function App() {
 
   useEffect(() => {
     // Firebase Auth state listener
-    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
-      setUser(firebaseUser);
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        // Fetch user document from Firestore to check role
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        try {
+          const docSnap = await getDoc(userDocRef);
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            if (userData.role === 'admin') {
+              setUser(firebaseUser);
+            } else {
+              // Not an admin, deny access
+              await auth.signOut();
+              setUser(null);
+            }
+          } else {
+            // No user doc found, deny access
+            await auth.signOut();
+            setUser(null);
+          }
+        } catch (err) {
+          console.error("Error fetching user role:", err);
+          await auth.signOut();
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
     return () => unsubscribe();

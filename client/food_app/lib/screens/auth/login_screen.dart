@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/firebase_service.dart';
 import '../../models/menu_item.dart';
+import '../main_shell.dart';
+
+const _kSavedEmail = 'pref_saved_email';
+const _kRememberMe = 'pref_remember_me';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   String _selectedRole = 'student';
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _rememberMe = false;
 
   final _loginFormKey = GlobalKey<FormState>();
   final _signUpFormKey = GlobalKey<FormState>();
@@ -33,8 +39,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _loginEmailController = TextEditingController();
   final _loginPasswordController = TextEditingController();
 
-  String? _selectedOutletId;
-  List<Outlet> _outlets = [];
+  final _outletIdController = TextEditingController();
 
   final List<Map<String, dynamic>> _roles = [
     {'id': 'student', 'label': 'STUDENT', 'icon': Icons.school},
@@ -45,14 +50,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
-    _fetchOutlets();
+    _loadSavedCredentials();
   }
-  
-  Future<void> _fetchOutlets() async {
-    final outlets = await FirebaseService.getOutlets();
-    if (mounted) {
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final remember = prefs.getBool(_kRememberMe) ?? false;
+    final savedEmail = prefs.getString(_kSavedEmail) ?? '';
+    if (remember && savedEmail.isNotEmpty) {
       setState(() {
-        _outlets = outlets;
+        _rememberMe = true;
+        _loginEmailController.text = savedEmail;
       });
     }
   }
@@ -68,15 +76,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _registerPasswordController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
+    _outletIdController.dispose();
     super.dispose();
   }
 
   Future<void> _submitForm() async {
     if (!_signUpFormKey.currentState!.validate()) return;
 
-    if (_selectedRole == 'manager' && _selectedOutletId == null) {
+    if (_selectedRole == 'manager' && _outletIdController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select an outlet.')));
+          const SnackBar(content: Text('Please enter the Outlet ID provided by your admin.')));
       return;
     }
 
@@ -87,9 +96,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final studentId = _studentIdController.text.trim();
     final registeredNumber = _registeredNumberController.text.trim();
 
-    if (_selectedRole == 'student' && !email.endsWith('@college.edu')) {
+    if (_selectedRole == 'student' && !email.endsWith('@presidencyuniversity.in')) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registration requires a valid @college.edu email.')));
+          const SnackBar(content: Text('Registration requires a valid @presidencyuniversity.in email.')));
       return;
     }
 
@@ -114,14 +123,39 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (_selectedRole == 'student') {
         userData['studentId'] = studentId;
       } else if (_selectedRole == 'manager') {
-        userData['managedOutletId'] = _selectedOutletId!;
         userData['registeredNumber'] = registeredNumber;
+        userData['managedOutletId'] = _outletIdController.text.trim();
       }
 
+      // 1. Create the user document FIRST
       await FirebaseFirestore.instance
           .collection('users')
           .doc(credential.user!.uid)
           .set(userData);
+
+      // 2. Then attempt to auto-create the outlet (if manager)
+      if (_selectedRole == 'manager') {
+        final outletId = _outletIdController.text.trim();
+        try {
+          final outletDoc = await FirebaseFirestore.instance.collection('outlets').doc(outletId).get();
+          if (!outletDoc.exists) {
+            await FirebaseFirestore.instance.collection('outlets').doc(outletId).set({
+              'name': 'Outlet $outletId',
+              'tagline': 'Newly registered outlet',
+              'isOpen': true,
+              'queueCount': 0,
+              'waitTime': 'No wait',
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+          }
+        } catch (e) {
+          debugPrint('Could not auto-create outlet (likely permission denied due to Firestore rules): $e');
+        }
+      }
+
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainShell()), (route) => false);
+      }
 
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -147,6 +181,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
+      // Save or clear email based on Remember Me
+      final prefs = await SharedPreferences.getInstance();
+      if (_rememberMe) {
+        await prefs.setString(_kSavedEmail, email);
+        await prefs.setBool(_kRememberMe, true);
+      } else {
+        await prefs.remove(_kSavedEmail);
+        await prefs.setBool(_kRememberMe, false);
+      }
+
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainShell()), (route) => false);
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -325,12 +372,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               validator: (v) => v!.isEmpty ? 'Enter password' : null,
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: _forgotPassword,
-                child: const Text('Forgot password?', style: TextStyle(fontSize: 13, color: AppTheme.primary, fontWeight: FontWeight.w600)),
-              ),
+            // Remember Me row
+            Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: _rememberMe,
+                    onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                    activeColor: AppTheme.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('Remember my email', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.7), fontWeight: FontWeight.w500)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: _forgotPassword,
+                  child: const Text('Forgot password?', style: TextStyle(fontSize: 13, color: AppTheme.primary, fontWeight: FontWeight.w600)),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             _buildGradientButton('Sign In →', _doLogin),
@@ -385,12 +447,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               const SizedBox(height: 12),
               _buildField(
                 icon: Icons.email_outlined, 
-                hint: _selectedRole == 'student' ? 'College Email (@college.edu)' : 'Email', 
+                hint: _selectedRole == 'student' ? 'College Email (@presidencyuniversity.in)' : 'Email', 
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 validator: (v) {
                   if (v!.isEmpty) return 'Enter email';
-                  if (_selectedRole == 'student' && !v.endsWith('@college.edu')) return 'Must use @college.edu';
+                  if (_selectedRole == 'student' && !v.endsWith('@presidencyuniversity.in')) return 'Must use @presidencyuniversity.in';
                   return null;
                 },
               ),
@@ -412,38 +474,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   validator: (v) => v!.isEmpty ? 'Enter Student ID' : null,
                 ),
                 const SizedBox(height: 12),
-              ],
-
-              if (_selectedRole == 'manager') ...[
+              ] else ...[
                 _buildField(
-                  icon: Icons.verified_user_outlined, 
+                  icon: Icons.badge_outlined, 
                   hint: 'Registered Baker Number', 
                   controller: _registeredNumberController,
                   validator: (v) => v!.isEmpty ? 'Enter Baker Number' : null,
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: theme.dividerColor, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                    color: theme.cardColor,
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      isExpanded: true,
-                      hint: Text('Select Managed Outlet', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 14)),
-                      value: _selectedOutletId,
-                      icon: Icon(Icons.arrow_drop_down, color: theme.colorScheme.onSurface.withOpacity(0.4)),
-                      items: _outlets.map((outlet) {
-                        return DropdownMenuItem<String>(
-                          value: outlet.id,
-                          child: Text(outlet.name, style: const TextStyle(fontSize: 14)),
-                        );
-                      }).toList(),
-                      onChanged: (val) => setState(() => _selectedOutletId = val),
-                    ),
-                  ),
+                _buildField(
+                  icon: Icons.store_mall_directory_outlined, 
+                  hint: 'Outlet ID (provided by Admin)', 
+                  controller: _outletIdController,
+                  validator: (v) => v!.isEmpty ? 'Enter Outlet ID' : null,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -476,7 +519,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           // Clear role-specific fields
           _studentIdController.clear();
           _registeredNumberController.clear();
-          _selectedOutletId = null;
+          _outletIdController.clear();
         });
       },
       child: Padding(

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+
+const _kThemeKey = 'pref_dark_mode';
 
 class UserProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -19,6 +23,7 @@ class UserProvider extends ChangeNotifier {
   bool _isPremium = false;
   DateTime? _premiumExpiry;
   bool _isLoading = true;
+  String? _photoBase64;
 
   // ── Getters ──────────────────────────────────────────────
   bool get isLoading => _isLoading;
@@ -34,60 +39,69 @@ class UserProvider extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   bool get isPremium => _isPremium;
   DateTime? get premiumExpiry => _premiumExpiry;
-  String get initials => _name
-      .split(' ')
-      .map((w) => w.isNotEmpty ? w[0] : '')
-      .take(2)
-      .join()
-      .toUpperCase();
+  String? get photoBase64 => _photoBase64;
+  String get initials {
+    if (_name.trim().isEmpty) return '??';
+    return _name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
+  }
 
   UserProvider() {
+    _loadPrefs();
     // Listen to Firebase Auth state changes
     _auth.authStateChanges().listen(_onAuthStateChanged);
   }
 
-  // ── Internal: handle auth state changes ─────────────────
-  Future<void> _onAuthStateChanged(User? user) async {
-    _firebaseUser = user;
-
-    if (user != null) {
-      // Load extra profile data from Firestore
-      await _loadUserProfile(user.uid);
-    } else {
-      _resetToDefaults();
-    }
-
-    _isLoading = false;
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool(_kThemeKey) ?? false;
+    _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
     notifyListeners();
   }
 
-  Future<void> _loadUserProfile(String uid) async {
-    try {
-      final doc = await _db.collection('users').doc(uid).get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        _name = data['name'] ?? _firebaseUser?.displayName ?? 'Student';
-        _email = data['email'] ?? _firebaseUser?.email ?? '';
-        _role = data['role'] ?? 'student';
-        _isPremium = data['isPremium'] ?? false;
-        _phone = data['phone'];
-        _studentId = data['studentId'];
-        _managedOutletId = data['managedOutletId'];
-        _registeredNumber = data['registeredNumber'];
-      } else {
-        // Profile doc doesn't exist yet (Cloud Function may be delayed)
-        // Use data directly from Firebase Auth
-        _name = _firebaseUser?.displayName ?? 'Student';
-        _email = _firebaseUser?.email ?? '';
-        _role = 'student';
-        _isPremium = false;
-        _phone = null;
-        _studentId = null;
-        _managedOutletId = null;
-        _registeredNumber = null;
-      }
-    } catch (e) {
-      debugPrint('Error loading user profile: $e');
+  StreamSubscription<DocumentSnapshot>? _userDocSub;
+
+  // ── Internal: handle auth state changes ─────────────────
+  Future<void> _onAuthStateChanged(User? user) async {
+    _firebaseUser = user;
+    await _userDocSub?.cancel();
+
+    if (user != null) {
+      _userDocSub = _db.collection('users').doc(user.uid).snapshots().listen((doc) {
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data() as Map<String, dynamic>;
+          final fetchedName = data['name'] as String?;
+          _name = (fetchedName != null && fetchedName.trim().isNotEmpty) ? fetchedName.trim() : (user.displayName ?? 'Student');
+          _email = data['email'] ?? user.email ?? '';
+          _role = data['role'] ?? 'student';
+          _isPremium = data['isPremium'] ?? false;
+          _phone = data['phone'];
+          _studentId = data['studentId'];
+          _managedOutletId = data['managedOutletId'];
+          _registeredNumber = data['registeredNumber'];
+          _photoBase64 = data['photoBase64'];
+        } else {
+          // Profile doc doesn't exist yet (Cloud Function may be delayed or still writing)
+          _name = user.displayName ?? 'Student';
+          _email = user.email ?? '';
+          _role = 'student';
+          _isPremium = false;
+          _phone = null;
+          _studentId = null;
+          _managedOutletId = null;
+          _registeredNumber = null;
+          _photoBase64 = null;
+        }
+        _isLoading = false;
+        notifyListeners();
+      }, onError: (e) {
+        debugPrint('Error listening to user profile: $e');
+        _isLoading = false;
+        notifyListeners();
+      });
+    } else {
+      _resetToDefaults();
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -101,6 +115,7 @@ class UserProvider extends ChangeNotifier {
     _registeredNumber = null;
     _isPremium = false;
     _premiumExpiry = null;
+    _photoBase64 = null;
   }
 
   // ── Public API ───────────────────────────────────────────
@@ -126,13 +141,16 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleTheme() {
+  void toggleTheme() async {
     _themeMode =
         _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kThemeKey, _themeMode == ThemeMode.dark);
     notifyListeners();
   }
 
   Future<void> logout() async {
+    await _userDocSub?.cancel();
     await _auth.signOut();
     _resetToDefaults();
     notifyListeners();
