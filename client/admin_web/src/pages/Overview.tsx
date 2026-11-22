@@ -12,6 +12,7 @@ interface ApprovalTicket {
   outletId: string;
   outletName?: string;
   submittedByName?: string;
+  sourceDoc?: 'menu_items' | 'approval_tickets';
   itemData: {
     name: string;
     description?: string;
@@ -61,36 +62,111 @@ export default function Overview() {
       setOutlets(snap.docs.map(d => ({ id: d.id, ...d.data() } as OutletItem)));
     });
 
-    // 3. Approval Tickets listener
-    const qTickets = query(collection(db, 'approval_tickets'), where('status', '==', 'pending'), limit(10));
-    const unsubTickets = onSnapshot(qTickets, (snap) => {
-      setPendingTickets(snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalTicket)));
-    });
+    // 3. Approval Tickets listener (combining menu_items and approval_tickets)
+    let rawMenuItems: ApprovalTicket[] = [];
+    let rawApprovalTickets: ApprovalTicket[] = [];
+
+    const syncPending = () => {
+      const map = new Map<string, ApprovalTicket>();
+      rawMenuItems.forEach(t => map.set(t.id, t));
+      rawApprovalTickets.forEach(t => map.set(t.id, t));
+      setPendingTickets(Array.from(map.values()).slice(0, 10));
+    };
+
+    const unsubMenu = onSnapshot(collection(db, 'menu_items'), (snap) => {
+      rawMenuItems = snap.docs
+        .filter(d => {
+          const data = d.data();
+          return data.approvalStatus === 'pending' || (data.isApproved === false && data.approvalStatus !== 'rejected');
+        })
+        .map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            type: 'MENU_ITEM_ADD',
+            status: 'pending',
+            outletId: data.outletId || '01',
+            outletName: data.outletName || `Outlet ${data.outletId || '01'}`,
+            submittedByName: data.submittedByName || 'Outlet Manager',
+            sourceDoc: 'menu_items',
+            itemData: {
+              name: data.name || 'Untitled Item',
+              description: data.description || '',
+              price: Number(data.price || 0),
+              category: data.category || 'General',
+              prepTime: Number(data.prepTime || 5),
+              photoBase64: data.photoBase64,
+            },
+          } as ApprovalTicket;
+        });
+      syncPending();
+    }, () => {});
+
+    let unsubTickets: (() => void) | null = null;
+    try {
+      const qTickets = query(collection(db, 'approval_tickets'), where('status', '==', 'pending'), limit(10));
+      unsubTickets = onSnapshot(qTickets, (snap) => {
+        rawApprovalTickets = snap.docs.map(d => ({
+          id: d.id,
+          sourceDoc: 'approval_tickets',
+          ...d.data(),
+        } as ApprovalTicket));
+        syncPending();
+      }, () => {});
+    } catch (_) {}
 
     return () => {
       unsubOrders();
       unsubOutlets();
-      unsubTickets();
+      unsubMenu();
+      if (unsubTickets) unsubTickets();
     };
   }, []);
 
   const handleQuickApprove = async (ticket: ApprovalTicket) => {
     try {
-      // Publish to menu_items
-      await addDoc(collection(db, 'outlets', ticket.outletId, 'menu_items'), {
-        name: ticket.itemData.name,
-        price: Number(ticket.itemData.price),
-        category: ticket.itemData.category || 'Snacks',
-        prepTime: Number(ticket.itemData.prepTime || 5),
-        isAvailable: true,
-        outletId: ticket.outletId,
-        createdAt: serverTimestamp(),
-      });
-      // Mark approved
-      await updateDoc(doc(db, 'approval_tickets', ticket.id), {
-        status: 'approved',
-        reviewedAt: serverTimestamp(),
-      });
+      if (ticket.sourceDoc === 'menu_items') {
+        // Direct update in menu_items
+        await updateDoc(doc(db, 'menu_items', ticket.id), {
+          approvalStatus: 'approved',
+          isApproved: true,
+          isAvailable: true,
+          reviewedAt: serverTimestamp(),
+        });
+      } else {
+        // Publish to menu_items
+        await addDoc(collection(db, 'menu_items'), {
+          name: ticket.itemData.name,
+          price: Number(ticket.itemData.price),
+          category: ticket.itemData.category || 'Snacks',
+          prepTime: Number(ticket.itemData.prepTime || 5),
+          isAvailable: true,
+          isApproved: true,
+          approvalStatus: 'approved',
+          outletId: ticket.outletId,
+          createdAt: serverTimestamp(),
+        });
+
+        try {
+          await updateDoc(doc(db, 'approval_tickets', ticket.id), {
+            status: 'approved',
+            reviewedAt: serverTimestamp(),
+          });
+        } catch (_) {}
+      }
+
+      // Also try publishing to outlet subcollection
+      try {
+        await addDoc(collection(db, 'outlets', ticket.outletId, 'menu_items'), {
+          name: ticket.itemData.name,
+          price: Number(ticket.itemData.price),
+          category: ticket.itemData.category || 'Snacks',
+          prepTime: Number(ticket.itemData.prepTime || 5),
+          isAvailable: true,
+          outletId: ticket.outletId,
+          createdAt: serverTimestamp(),
+        });
+      } catch (_) {}
     } catch (e) {
       console.error('Error approving ticket:', e);
     }

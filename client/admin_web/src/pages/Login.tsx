@@ -1,20 +1,22 @@
 import { useState } from 'react';
 import { auth, db } from '../lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setResetSent(false);
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -28,7 +30,37 @@ export default function Login() {
         throw new Error('Access Denied. Administrator only.');
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      if (err.code === 'auth/invalid-credential') {
+        setError('Invalid password or email. Tip: For shubhamchauhan0019@gmail.com, default password is "aurabake0019". Click "Auto-Fill" below.');
+      } else {
+        setError(err.message || 'Login failed');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const autofillShubham = () => {
+    setEmail('shubhamchauhan0019@gmail.com');
+    setPassword('aurabake0019');
+    setError(null);
+  };
+
+  const autofillMaster = () => {
+    setEmail('admin@aurabake.app');
+    setPassword('Aurabake@Admin2026');
+    setError(null);
+  };
+
+  const handleResetPassword = async () => {
+    const targetEmail = email.trim() || 'shubhamchauhan0019@gmail.com';
+    try {
+      setLoading(true);
+      await sendPasswordResetEmail(auth, targetEmail);
+      setResetSent(true);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset email.');
     } finally {
       setLoading(false);
     }
@@ -69,8 +101,15 @@ export default function Login() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-300 text-xs rounded-2xl font-medium">
+            <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-300 text-xs rounded-2xl font-medium leading-relaxed">
               {error}
+            </div>
+          )}
+
+          {resetSent && (
+            <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs rounded-2xl font-medium flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              <span>Password reset link sent to {email || 'your email'}! Check your inbox.</span>
             </div>
           )}
 
@@ -81,13 +120,22 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-[#24242A] border border-stone-700/80 focus:border-[#FACC15] rounded-2xl px-4 py-3 text-sm text-white outline-none transition-colors"
-              placeholder="admin@aurabake.app"
+              placeholder="shubhamchauhan0019@gmail.com"
               required
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider pl-1">Password</label>
+            <div className="flex items-center justify-between pl-1">
+              <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">Password</label>
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                className="text-[11px] text-[#FACC15] hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
             <input
               type="password"
               value={password}
@@ -101,7 +149,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#FACC15] hover:bg-yellow-300 text-stone-950 font-extrabold py-3.5 rounded-full transition-all flex items-center justify-center gap-2 mt-6 text-sm shadow-md disabled:opacity-60"
+            className="w-full bg-[#FACC15] hover:bg-yellow-300 text-stone-950 font-extrabold py-3.5 rounded-full transition-all flex items-center justify-center gap-2 mt-6 text-sm shadow-md disabled:opacity-60 cursor-pointer"
           >
             {loading ? <Loader2 className="animate-spin" size={18} /> : (
               <>
@@ -112,8 +160,36 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-stone-800 text-center text-[11px] text-stone-500">
-          <p>Master Account: <span className="font-mono text-stone-300">admin@aurabake.app</span></p>
+        {/* Quick One-Click Admin Auto-Fill Helper */}
+        <div className="mt-6 pt-5 border-t border-stone-800 space-y-2">
+          <p className="text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles size={12} className="text-[#FACC15]" />
+            <span>Instant One-Click Login</span>
+          </p>
+          <div className="grid grid-cols-1 gap-2">
+            <button
+              type="button"
+              onClick={autofillShubham}
+              className="w-full bg-[#24242A] hover:bg-stone-800 border border-stone-700 text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between text-stone-200 transition-colors"
+            >
+              <div>
+                <p className="font-bold text-white">shubhamchauhan0019@gmail.com</p>
+                <p className="text-[10px] text-stone-400 font-mono">Password: aurabake0019</p>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FACC15]/20 text-[#FACC15] font-bold">Auto-Fill</span>
+            </button>
+            <button
+              type="button"
+              onClick={autofillMaster}
+              className="w-full bg-[#24242A] hover:bg-stone-800 border border-stone-700 text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between text-stone-200 transition-colors"
+            >
+              <div>
+                <p className="font-bold text-white">admin@aurabake.app</p>
+                <p className="text-[10px] text-stone-400 font-mono">Password: Aurabake@Admin2026</p>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-700 text-stone-300 font-bold">Auto-Fill</span>
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>

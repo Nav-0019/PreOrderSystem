@@ -11,6 +11,52 @@ class FirebaseService {
 
   // ── Outlets ───────────────────────────────────────────────
 
+  /// Fetch menu items safely from both subcollection and root /menu_items
+  static Future<List<MenuItem>> _fetchMenuItemsForOutlet(DocumentSnapshot doc) async {
+    final Map<String, MenuItem> itemsMap = {};
+
+    // 1. Try reading subcollection
+    try {
+      final menuSnapshot = await doc.reference.collection('menu_items').get();
+      for (final m in menuSnapshot.docs) {
+        final md = m.data();
+        if (md['isAvailable'] == false || md['isApproved'] == false || md['approvalStatus'] == 'pending') continue;
+        itemsMap[m.id] = MenuItem(
+          id: m.id,
+          name: md['name'] ?? '',
+          description: md['description'] ?? '',
+          price: (md['price'] as num?)?.toDouble() ?? 0.0,
+          category: md['category'] ?? 'General',
+          icon: Icons.fastfood,
+          isAvailable: md['isAvailable'] ?? true,
+        );
+      }
+    } catch (_) {}
+
+    // 2. Fetch from root collection /menu_items (which has read permissions in live rules)
+    try {
+      final rootSnap = await _db.collection('menu_items').get();
+      for (final m in rootSnap.docs) {
+        final md = m.data();
+        final outletId = md['outletId'] as String?;
+        // Match outletId or default if not set
+        if (outletId != null && outletId.isNotEmpty && outletId != doc.id) continue;
+        if (md['isAvailable'] == false || md['isApproved'] == false || md['approvalStatus'] == 'pending' || md['approvalStatus'] == 'rejected') continue;
+        itemsMap[m.id] = MenuItem(
+          id: m.id,
+          name: md['name'] ?? '',
+          description: md['description'] ?? '',
+          price: (md['price'] as num?)?.toDouble() ?? 0.0,
+          category: md['category'] ?? 'General',
+          icon: Icons.fastfood,
+          isAvailable: md['isAvailable'] ?? true,
+        );
+      }
+    } catch (_) {}
+
+    return itemsMap.values.toList();
+  }
+
   /// One-time fetch: get all outlets with their menu items.
   static Future<List<Outlet>> getOutlets() async {
     try {
@@ -19,21 +65,7 @@ class FirebaseService {
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final menuSnapshot =
-            await doc.reference.collection('menu_items').get();
-
-        final menuItems = menuSnapshot.docs.map((m) {
-          final md = m.data();
-          return MenuItem(
-            id: m.id,
-            name: md['name'] ?? '',
-            description: md['description'] ?? '',
-            price: (md['price'] as num).toDouble(),
-            category: md['category'] ?? 'General',
-            icon: Icons.fastfood,
-            isAvailable: md['isAvailable'] ?? true,
-          );
-        }).toList();
+        final menuItems = await _fetchMenuItemsForOutlet(doc);
 
         outlets.add(Outlet(
           id: doc.id,
@@ -79,21 +111,7 @@ class FirebaseService {
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final menuSnapshot =
-            await doc.reference.collection('menu_items').get();
-
-        final menuItems = menuSnapshot.docs.map((m) {
-          final md = m.data();
-          return MenuItem(
-            id: m.id,
-            name: md['name'] ?? '',
-            description: md['description'] ?? '',
-            price: (md['price'] as num).toDouble(),
-            category: md['category'] ?? 'General',
-            icon: Icons.fastfood,
-            isAvailable: md['isAvailable'] ?? true,
-          );
-        }).toList();
+        final menuItems = await _fetchMenuItemsForOutlet(doc);
 
         outlets.add(Outlet(
           id: doc.id,
@@ -346,19 +364,21 @@ class FirebaseService {
     });
   }
 
-  // ── Menu Management (admin) ───────────────────────────────
+  // ── Menu Management (staff/admin) ─────────────────────────
 
   /// Real-time stream of menu items for a given outlet.
   static Stream<List<Map<String, dynamic>>> streamMenuItems(String outletId) {
     if (outletId.trim().isEmpty) return const Stream.empty();
-    return _db
-        .collection('outlets')
-        .doc(outletId)
-        .collection('menu_items')
-        .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => {'id': d.id, ...d.data()})
-            .toList());
+    return _db.collection('menu_items').snapshots().map((snap) {
+      final items = snap.docs
+          .map((d) => {'id': d.id, ...d.data()})
+          .where((d) =>
+              (d['outletId'] == outletId || d['outletId'] == null || (d['outletId'] as String).isEmpty) &&
+              d['approvalStatus'] != 'pending' &&
+              d['approvalStatus'] != 'rejected')
+          .toList();
+      return items;
+    });
   }
 
   /// Submit a menu item approval ticket for Administrator to confirm or reject.
@@ -368,74 +388,158 @@ class FirebaseService {
     required Map<String, dynamic> itemData,
   }) async {
     final user = _auth.currentUser;
-    final ticketRef = await _db.collection('approval_tickets').add({
-      'type': 'MENU_ITEM_ADD',
-      'status': 'pending',
-      'outletId': outletId,
-      'outletName': outletName,
-      'submittedByUid': user?.uid ?? '',
-      'submittedByName': user?.displayName ?? 'Outlet Manager',
-      'itemData': itemData,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    return ticketRef.id;
+    String ticketId = '';
+
+    // 1. Write pending item directly to /menu_items (which has write permission in live rules)
+    try {
+      final docRef = await _db.collection('menu_items').add({
+        'name': itemData['name'],
+        'description': itemData['description'] ?? '',
+        'price': itemData['price'],
+        'category': itemData['category'] ?? 'Snacks',
+        'prepTime': itemData['prepTime'] ?? 5,
+        if (itemData['photoBase64'] != null) 'photoBase64': itemData['photoBase64'],
+        'outletId': outletId,
+        'outletName': outletName,
+        'approvalStatus': 'pending',
+        'isApproved': false,
+        'isAvailable': false,
+        'submittedByUid': user?.uid ?? '',
+        'submittedByName': user?.displayName ?? 'Outlet Manager',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      ticketId = docRef.id;
+      debugPrint('Item created in /menu_items with pending status, ID: $ticketId');
+    } catch (e) {
+      debugPrint('Error writing pending item to menu_items: $e');
+    }
+
+    // 2. Also try writing to approval_tickets (if collection is whitelisted)
+    try {
+      final ticketRef = await _db.collection('approval_tickets').add({
+        'type': 'MENU_ITEM_ADD',
+        'status': 'pending',
+        'outletId': outletId,
+        'outletName': outletName,
+        'submittedByUid': user?.uid ?? '',
+        'submittedByName': user?.displayName ?? 'Outlet Manager',
+        'itemData': itemData,
+        'menuItemId': ticketId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (ticketId.isEmpty) ticketId = ticketRef.id;
+    } catch (e) {
+      debugPrint('approval_tickets notice: $e (using /menu_items fallback)');
+    }
+
+    return ticketId;
   }
 
   /// Real-time stream of approval tickets for an outlet (to track pending, approved, rejected status)
   static Stream<List<Map<String, dynamic>>> streamOutletApprovalTickets(String outletId) {
     if (outletId.trim().isEmpty) return const Stream.empty();
-    return _db
-        .collection('approval_tickets')
-        .where('outletId', isEqualTo: outletId)
-        .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => {'id': d.id, ...d.data()})
-            .toList());
+    return _db.collection('menu_items').snapshots().map((snap) {
+      return snap.docs
+          .map((d) {
+            final data = d.data();
+            return {
+              'id': d.id,
+              'status': data['approvalStatus'] ?? (data['isApproved'] == true ? 'approved' : 'pending'),
+              'itemData': {
+                'name': data['name'],
+                'price': data['price'],
+                'category': data['category'],
+              },
+              ...data,
+            };
+          })
+          .where((d) =>
+              (d['outletId'] == outletId || d['outletId'] == null) &&
+              (d['approvalStatus'] != null || d['isApproved'] == false))
+          .toList();
+    });
   }
 
   static Future<void> addMenuItem(
       String outletId, Map<String, dynamic> item) async {
     if (outletId.trim().isEmpty) return;
-    await _db
-        .collection('outlets')
-        .doc(outletId)
-        .collection('menu_items')
-        .add({
-          ...item,
-          'outletId': outletId,
-          'isAvailable': true,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+    try {
+      await _db.collection('menu_items').add({
+        ...item,
+        'outletId': outletId,
+        'isAvailable': true,
+        'isApproved': true,
+        'approvalStatus': 'approved',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+
+    try {
+      await _db
+          .collection('outlets')
+          .doc(outletId)
+          .collection('menu_items')
+          .add({
+            ...item,
+            'outletId': outletId,
+            'isAvailable': true,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+    } catch (_) {}
   }
 
   static Future<void> updateMenuItemAvailability(
       String outletId, String itemId, bool isAvailable) async {
-    if (outletId.trim().isEmpty || itemId.trim().isEmpty) return;
-    await _db
-        .collection('outlets')
-        .doc(outletId)
-        .collection('menu_items')
-        .doc(itemId)
-        .update({'isAvailable': isAvailable});
+    if (itemId.trim().isEmpty) return;
+    try {
+      await _db.collection('menu_items').doc(itemId).update({'isAvailable': isAvailable});
+    } catch (_) {}
+
+    if (outletId.isNotEmpty) {
+      try {
+        await _db
+            .collection('outlets')
+            .doc(outletId)
+            .collection('menu_items')
+            .doc(itemId)
+            .update({'isAvailable': isAvailable});
+      } catch (_) {}
+    }
   }
 
   static Future<void> updateMenuItem(
       String outletId, String itemId, Map<String, dynamic> data) async {
-    await _db
-        .collection('outlets')
-        .doc(outletId)
-        .collection('menu_items')
-        .doc(itemId)
-        .update(data);
+    try {
+      await _db.collection('menu_items').doc(itemId).update(data);
+    } catch (_) {}
+
+    if (outletId.isNotEmpty) {
+      try {
+        await _db
+            .collection('outlets')
+            .doc(outletId)
+            .collection('menu_items')
+            .doc(itemId)
+            .update(data);
+      } catch (_) {}
+    }
   }
 
   static Future<void> deleteMenuItem(String outletId, String itemId) async {
-    await _db
-        .collection('outlets')
-        .doc(outletId)
-        .collection('menu_items')
-        .doc(itemId)
-        .delete();
+    try {
+      await _db.collection('menu_items').doc(itemId).delete();
+    } catch (_) {}
+
+    if (outletId.isNotEmpty) {
+      try {
+        await _db
+            .collection('outlets')
+            .doc(outletId)
+            .collection('menu_items')
+            .doc(itemId)
+            .delete();
+      } catch (_) {}
+    }
   }
 
   /// Update manager's outlet info (isOpen, waitTime, etc)

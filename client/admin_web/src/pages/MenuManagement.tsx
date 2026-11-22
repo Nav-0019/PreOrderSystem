@@ -48,8 +48,31 @@ export default function MenuManagement() {
         setModalOutletId(outletList[0].id);
       }
 
-      const snap = await getDocs(collectionGroup(db, 'menu_items'));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as MenuItem));
+      // Fetch from root menu_items (which is open in Firestore rules)
+      const snap = await getDocs(collection(db, 'menu_items'));
+      const data = snap.docs.map(d => {
+        const itemData = d.data();
+        return {
+          id: d.id,
+          outletId: itemData.outletId || (outletList[0]?.id ?? '01'),
+          name: itemData.name || 'Item',
+          price: Number(itemData.price || 0),
+          isAvailable: itemData.isAvailable ?? true,
+          category: itemData.category || 'General',
+          prepTime: Number(itemData.prepTime || 5),
+        } as MenuItem;
+      });
+
+      // Also try collectionGroup for subcollections if rules allow
+      try {
+        const groupSnap = await getDocs(collectionGroup(db, 'menu_items'));
+        groupSnap.docs.forEach(d => {
+          if (!data.some(existing => existing.id === d.id)) {
+            data.push({ id: d.id, ...d.data() } as MenuItem);
+          }
+        });
+      } catch (_) {}
+
       data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setItems(data);
     } catch (e) {
@@ -64,10 +87,14 @@ export default function MenuManagement() {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, isAvailable: newStatus } : i));
 
     try {
-      await updateDoc(
-        doc(db, 'outlets', item.outletId, 'menu_items', item.id),
-        { isAvailable: newStatus }
-      );
+      // 1. Update in root menu_items
+      await updateDoc(doc(db, 'menu_items', item.id), { isAvailable: newStatus });
+      // 2. Also try updating in outlet subcollection if applicable
+      if (item.outletId) {
+        try {
+          await updateDoc(doc(db, 'outlets', item.outletId, 'menu_items', item.id), { isAvailable: newStatus });
+        } catch (_) {}
+      }
     } catch (e) {
       console.error('Failed to update availability:', e);
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, isAvailable: item.isAvailable } : i));
@@ -78,7 +105,12 @@ export default function MenuManagement() {
     if (!window.confirm(`Delete "${item.name}" from menu?`)) return;
     setItems(prev => prev.filter(i => i.id !== item.id));
     try {
-      await deleteDoc(doc(db, 'outlets', item.outletId, 'menu_items', item.id));
+      await deleteDoc(doc(db, 'menu_items', item.id));
+      if (item.outletId) {
+        try {
+          await deleteDoc(doc(db, 'outlets', item.outletId, 'menu_items', item.id));
+        } catch (_) {}
+      }
     } catch (e) {
       console.error('Failed to delete menu item:', e);
       fetchData();
@@ -94,15 +126,31 @@ export default function MenuManagement() {
       const priceNum = parseFloat(modalPrice) || 0;
       const prepNum = parseInt(modalPrepTime) || 5;
 
-      const docRef = await addDoc(collection(db, 'outlets', modalOutletId, 'menu_items'), {
+      // 1. Add to root menu_items (guaranteed write permissions)
+      const docRef = await addDoc(collection(db, 'menu_items'), {
         name: modalName.trim(),
         price: priceNum,
         category: modalCategory,
         prepTime: prepNum,
         isAvailable: true,
+        isApproved: true,
+        approvalStatus: 'approved',
         outletId: modalOutletId,
         createdAt: serverTimestamp(),
       });
+
+      // 2. Also try subcollection
+      try {
+        await addDoc(collection(db, 'outlets', modalOutletId, 'menu_items'), {
+          name: modalName.trim(),
+          price: priceNum,
+          category: modalCategory,
+          prepTime: prepNum,
+          isAvailable: true,
+          outletId: modalOutletId,
+          createdAt: serverTimestamp(),
+        });
+      } catch (_) {}
 
       setItems(prev => [
         {

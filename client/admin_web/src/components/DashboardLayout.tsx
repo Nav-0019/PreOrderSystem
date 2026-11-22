@@ -12,11 +12,35 @@ export default function DashboardLayout() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'approval_tickets'), where('status', '==', 'pending'));
-    const unsub = onSnapshot(q, (snap) => {
-      setPendingApprovalsCount(snap.docs.length);
-    });
-    return () => unsub();
+    let countTickets = 0;
+    let countMenu = 0;
+
+    const updateCount = () => {
+      setPendingApprovalsCount(countTickets + countMenu);
+    };
+
+    // 1. Menu items with pending approval
+    const unsubMenu = onSnapshot(collection(db, 'menu_items'), (snap) => {
+      countMenu = snap.docs.filter(d => {
+        const data = d.data();
+        return data.approvalStatus === 'pending' || (data.isApproved === false && data.approvalStatus !== 'rejected');
+      }).length;
+      updateCount();
+    }, () => {});
+
+    // 2. Approval tickets collection (if whitelisted)
+    let unsubTickets: (() => void) | null = null;
+    try {
+      unsubTickets = onSnapshot(query(collection(db, 'approval_tickets'), where('status', '==', 'pending')), (snap) => {
+        countTickets = snap.docs.length;
+        updateCount();
+      }, () => {});
+    } catch (_) {}
+
+    return () => {
+      unsubMenu();
+      if (unsubTickets) unsubTickets();
+    };
   }, []);
 
   const handleLogout = async () => {

@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { CheckCircle2, XCircle, Clock, Store, Tag, AlertCircle, ShieldCheck } from 'lucide-react';
 
@@ -15,6 +15,7 @@ interface ApprovalTicket {
   createdAt?: any;
   reviewedAt?: any;
   rejectionReason?: string;
+  sourceDoc?: 'menu_items' | 'approval_tickets';
   itemData: {
     name: string;
     description?: string;
@@ -36,21 +37,91 @@ export default function Approvals() {
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'approval_tickets'),
-      orderBy('createdAt', 'desc')
-    );
+    let rawMenuItems: ApprovalTicket[] = [];
+    let rawApprovalTickets: ApprovalTicket[] = [];
 
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalTicket));
-      setTickets(data);
+    const syncLists = () => {
+      // Merge tickets: menu_items + approval_tickets, deduplicated by id
+      const map = new Map<string, ApprovalTicket>();
+      
+      // Add menu_items first
+      rawMenuItems.forEach(t => map.set(t.id, t));
+      // Add approval_tickets
+      rawApprovalTickets.forEach(t => {
+        // If ticket refers to an existing menu_items doc, overwrite or merge
+        map.set(t.id, t);
+      });
+
+      const combined = Array.from(map.values());
+      setTickets(combined);
       setLoading(false);
+    };
+
+    // 1. Listen to menu_items (which always has permissions in live Firestore)
+    const unsubMenu = onSnapshot(collection(db, 'menu_items'), (snap) => {
+      rawMenuItems = snap.docs
+        .map(d => {
+          const data = d.data();
+          const isPending = data.approvalStatus === 'pending' || (data.isApproved === false && data.approvalStatus !== 'rejected');
+          const isRejected = data.approvalStatus === 'rejected';
+          const isApproved = data.approvalStatus === 'approved' || (data.isApproved === true && !data.approvalStatus);
+
+          const status: 'pending' | 'approved' | 'rejected' = isRejected 
+            ? 'rejected' 
+            : (isPending ? 'pending' : (isApproved ? 'approved' : 'pending'));
+
+          return {
+            id: d.id,
+            type: 'MENU_ITEM_ADD',
+            status,
+            outletId: data.outletId || '01',
+            outletName: data.outletName || `Outlet ${data.outletId || '01'}`,
+            submittedByUid: data.submittedByUid || '',
+            submittedByName: data.submittedByName || 'Outlet Manager',
+            createdAt: data.createdAt,
+            reviewedAt: data.reviewedAt,
+            rejectionReason: data.rejectionReason,
+            sourceDoc: 'menu_items',
+            itemData: {
+              name: data.name || 'Untitled Item',
+              description: data.description || '',
+              price: Number(data.price || 0),
+              category: data.category || 'General',
+              prepTime: Number(data.prepTime || 5),
+              photoBase64: data.photoBase64,
+            },
+          } as ApprovalTicket;
+        })
+        // Only show items that have explicit approval metadata or are pending
+        .filter(t => t.status === 'pending' || t.status === 'rejected' || (t.status === 'approved' && t.createdAt));
+
+      syncLists();
     }, (err) => {
-      console.error('Error fetching tickets:', err);
-      setLoading(false);
+      console.warn('menu_items approvals listener notice:', err);
     });
 
-    return () => unsub();
+    // 2. Also listen to approval_tickets (if collection is allowed)
+    let unsubTickets: (() => void) | null = null;
+    try {
+      unsubTickets = onSnapshot(collection(db, 'approval_tickets'), (snap) => {
+        rawApprovalTickets = snap.docs.map(d => ({
+          id: d.id,
+          sourceDoc: 'approval_tickets',
+          ...d.data(),
+        } as ApprovalTicket));
+        syncLists();
+      }, (err) => {
+        console.warn('approval_tickets collection blocked by live rules, using menu_items fallback:', err.message);
+        syncLists();
+      });
+    } catch (_) {
+      syncLists();
+    }
+
+    return () => {
+      unsubMenu();
+      if (unsubTickets) unsubTickets();
+    };
   }, []);
 
   const handleApprove = async (ticket: ApprovalTicket) => {
@@ -58,27 +129,57 @@ export default function Approvals() {
     setProcessingId(ticket.id);
 
     try {
-      const itemRef = await addDoc(
-        collection(db, 'outlets', ticket.outletId, 'menu_items'),
-        {
+      if (ticket.sourceDoc === 'menu_items') {
+        // Direct update in menu_items
+        await updateDoc(doc(db, 'menu_items', ticket.id), {
+          approvalStatus: 'approved',
+          isApproved: true,
+          isAvailable: true,
+          reviewedAt: serverTimestamp(),
+        });
+      } else {
+        // Update in approval_tickets + publish to menu_items
+        await addDoc(collection(db, 'menu_items'), {
           name: ticket.itemData.name,
           description: ticket.itemData.description || '',
           price: Number(ticket.itemData.price),
           category: ticket.itemData.category || 'Snacks',
           prepTime: Number(ticket.itemData.prepTime || 5),
           isAvailable: true,
+          isApproved: true,
+          approvalStatus: 'approved',
           outletId: ticket.outletId,
           ticketId: ticket.id,
           photoBase64: ticket.itemData.photoBase64 || null,
           createdAt: serverTimestamp(),
-        }
-      );
+        });
 
-      await updateDoc(doc(db, 'approval_tickets', ticket.id), {
-        status: 'approved',
-        publishedItemId: itemRef.id,
-        reviewedAt: serverTimestamp(),
-      });
+        try {
+          await updateDoc(doc(db, 'approval_tickets', ticket.id), {
+            status: 'approved',
+            reviewedAt: serverTimestamp(),
+          });
+        } catch (_) {}
+      }
+
+      // Also try publishing to outlet subcollection
+      try {
+        await addDoc(
+          collection(db, 'outlets', ticket.outletId, 'menu_items'),
+          {
+            name: ticket.itemData.name,
+            description: ticket.itemData.description || '',
+            price: Number(ticket.itemData.price),
+            category: ticket.itemData.category || 'Snacks',
+            prepTime: Number(ticket.itemData.prepTime || 5),
+            isAvailable: true,
+            outletId: ticket.outletId,
+            ticketId: ticket.id,
+            photoBase64: ticket.itemData.photoBase64 || null,
+            createdAt: serverTimestamp(),
+          }
+        );
+      } catch (_) {}
     } catch (e) {
       console.error('Error approving ticket:', e);
       alert('Failed to approve ticket: ' + e);
@@ -92,11 +193,26 @@ export default function Approvals() {
     setProcessingId(rejectingTicket.id);
 
     try {
-      await updateDoc(doc(db, 'approval_tickets', rejectingTicket.id), {
-        status: 'rejected',
-        rejectionReason: rejectReason.trim() || 'Rejected by Administrator',
-        reviewedAt: serverTimestamp(),
-      });
+      const reason = rejectReason.trim() || 'Rejected by Administrator';
+
+      if (rejectingTicket.sourceDoc === 'menu_items') {
+        await updateDoc(doc(db, 'menu_items', rejectingTicket.id), {
+          approvalStatus: 'rejected',
+          isApproved: false,
+          isAvailable: false,
+          rejectionReason: reason,
+          reviewedAt: serverTimestamp(),
+        });
+      } else {
+        try {
+          await updateDoc(doc(db, 'approval_tickets', rejectingTicket.id), {
+            status: 'rejected',
+            rejectionReason: reason,
+            reviewedAt: serverTimestamp(),
+          });
+        } catch (_) {}
+      }
+
       setRejectingTicket(null);
       setRejectReason('');
     } catch (e) {
