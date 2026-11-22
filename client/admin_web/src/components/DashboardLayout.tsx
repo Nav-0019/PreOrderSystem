@@ -10,6 +10,7 @@ import clsx from 'clsx';
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+  const [openReportsCount, setOpenReportsCount] = useState(0);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
@@ -51,7 +52,12 @@ export default function DashboardLayout() {
       }, () => {});
     } catch (_) {}
 
-    // 3. Fetch existing system settings
+    // 3. Customer support reports listener
+    const unsubReports = onSnapshot(collection(db, 'support_reports'), (snap) => {
+      setOpenReportsCount(snap.docs.filter(d => d.data().status === 'open').length);
+    }, () => {});
+
+    // 4. Fetch existing system settings
     const loadSettings = async () => {
       try {
         const snap = await getDoc(doc(db, 'system_settings', 'config'));
@@ -71,6 +77,7 @@ export default function DashboardLayout() {
 
     return () => {
       unsubMenu();
+      unsubReports();
       if (unsubTickets) unsubTickets();
     };
   }, []);
@@ -114,6 +121,7 @@ export default function DashboardLayout() {
     { name: 'Live Queue', path: '/queue' },
     { name: 'Menu', path: '/menu' },
     { name: 'Analytics', path: '/analytics' },
+    { name: 'Settings & Hub', path: '/settings', badge: openReportsCount },
   ];
 
   return (
@@ -162,14 +170,17 @@ export default function DashboardLayout() {
 
         {/* Right: Actions, Bell & Profile */}
         <div className="flex items-center gap-2.5">
-          {/* Quick Settings Pill (Opens Fillable System Settings Modal) */}
+          {/* Settings Hub Pill Button */}
           <button
-            onClick={() => setIsSettingsModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-stone-300/80 bg-white/60 hover:bg-white text-stone-700 text-xs font-semibold shadow-xs transition-colors"
-            title="System & Platform Settings"
+            onClick={() => navigate('/settings')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-stone-300/80 bg-white/70 hover:bg-white text-stone-800 text-xs font-bold shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] relative"
+            title="Operations, Customer Queries, Manager Governance & Settings Hub"
           >
-            <Settings size={13} className="text-stone-500" />
+            <Settings size={13} className="text-stone-600" />
             <span>Setting</span>
+            {openReportsCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse ml-0.5" />
+            )}
           </button>
 
           {/* Notifications Bell with Interactive Dropdown */}
@@ -183,21 +194,55 @@ export default function DashboardLayout() {
               title="Notifications & Alerts"
             >
               <Bell size={14} />
-              {pendingApprovalsCount > 0 && (
+              {(pendingApprovalsCount > 0 || openReportsCount > 0) && (
                 <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-[#EAB308] ring-2 ring-white animate-pulse" />
               )}
             </button>
 
             {notificationsOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-white border border-stone-200 rounded-2xl p-3 shadow-xl z-50 animate-in fade-in slide-in-from-top-1 text-left">
+              <div className="absolute right-0 mt-2 w-80 bg-white border border-stone-200 rounded-2xl p-3 shadow-xl z-50 animate-in fade-in slide-in-from-top-1 text-left">
                 <div className="flex items-center justify-between pb-2 border-b border-stone-100">
                   <span className="text-xs font-bold text-stone-900">Notifications</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FACC15] text-stone-950 font-black">
-                    {pendingApprovalsCount} new
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {pendingApprovalsCount > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FACC15] text-stone-950 font-black">
+                        {pendingApprovalsCount} new
+                      </span>
+                    )}
+                    {openReportsCount > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500 text-white font-black">
+                        {openReportsCount} issues
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="py-2 space-y-2">
+                  {/* Customer Support Issues */}
+                  {openReportsCount > 0 && (
+                    <div
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        navigate('/settings?tab=queries');
+                      }}
+                      className="p-2.5 rounded-xl bg-red-50/80 border border-red-200/70 hover:bg-red-100 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-red-950 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                          <span>Customer Issue Reports</span>
+                        </p>
+                        <span className="text-[9px] px-1.5 py-0.2 bg-red-600 text-white rounded-full font-bold">
+                          {openReportsCount} Action Required
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-red-800 mt-1">
+                        Active refund or service disputes reported by students.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Menu Approvals */}
                   {pendingApprovalsCount > 0 ? (
                     <div
                       onClick={() => {
@@ -212,7 +257,9 @@ export default function DashboardLayout() {
                       </p>
                     </div>
                   ) : (
-                    <p className="text-xs text-stone-400 py-1 text-center">No pending approvals</p>
+                    openReportsCount === 0 && (
+                      <p className="text-xs text-stone-400 py-1 text-center">No pending alerts</p>
+                    )
                   )}
 
                   <div
@@ -231,11 +278,11 @@ export default function DashboardLayout() {
                   <button
                     onClick={() => {
                       setNotificationsOpen(false);
-                      navigate('/approvals');
+                      navigate('/settings?tab=queries');
                     }}
                     className="text-stone-900 font-bold hover:underline"
                   >
-                    View All Approvals →
+                    Support & Reports Hub →
                   </button>
                   <button
                     onClick={() => setNotificationsOpen(false)}
@@ -265,7 +312,7 @@ export default function DashboardLayout() {
             </button>
 
             {profileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-52 bg-white border border-stone-200 rounded-2xl p-2 shadow-xl z-50 animate-in fade-in slide-in-from-top-1">
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-stone-200 rounded-2xl p-2 shadow-xl z-50 animate-in fade-in slide-in-from-top-1">
                 <div className="px-3 py-2 border-b border-stone-100">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold text-stone-900">Administrator</p>
@@ -278,12 +325,12 @@ export default function DashboardLayout() {
                 <button
                   onClick={() => {
                     setProfileDropdownOpen(false);
-                    setIsSettingsModalOpen(true);
+                    navigate('/settings');
                   }}
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition-colors mt-1"
                 >
                   <Settings size={13} />
-                  System Settings
+                  Operations & Settings Hub
                 </button>
                 <button
                   onClick={handleLogout}

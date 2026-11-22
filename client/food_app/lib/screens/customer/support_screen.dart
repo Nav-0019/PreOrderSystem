@@ -341,7 +341,7 @@ class _ReportSheetState extends State<_ReportSheet> {
     setState(() => _isLoading = true);
     try {
       final user = context.read<UserProvider>();
-      await FirebaseFirestore.instance.collection('support_tickets').add({
+      await FirebaseFirestore.instance.collection('support_reports').add({
         'topic': widget.topic,
         'description': _descCtrl.text.trim(),
         'userId': user.uid,

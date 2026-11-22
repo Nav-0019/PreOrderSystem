@@ -10,6 +10,7 @@ import Approvals from './pages/Approvals';
 import LiveQueue from './pages/LiveQueue';
 import MenuManagement from './pages/MenuManagement';
 import Analytics from './pages/Analytics';
+import SettingsHub from './pages/SettingsHub';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -69,6 +70,7 @@ function App() {
           <Route path="queue" element={<LiveQueue />} />
           <Route path="menu" element={<MenuManagement />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="settings" element={<SettingsHub />} />
         </Route>
       </Routes>
     </Router>
