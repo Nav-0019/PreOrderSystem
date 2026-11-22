@@ -249,38 +249,40 @@ class FirebaseService {
   static Future<void> updateOrderStatus(String orderId, String status) async {
     try {
       final orderRef = _db.collection('orders').doc(orderId);
+      final updateData = <String, dynamic>{
+        'status': status,
+      };
+      if (status == 'completed') {
+        updateData['completedAt'] = FieldValue.serverTimestamp();
+        updateData['qualityChecked'] = true;
+        updateData['qualityConfirmedAt'] = FieldValue.serverTimestamp();
+      } else if (status == 'prep') {
+        updateData['prepStartedAt'] = FieldValue.serverTimestamp();
+      }
 
-      await _db.runTransaction((transaction) async {
-        final orderSnap = await transaction.get(orderRef);
-        if (!orderSnap.exists) return;
+      await orderRef.update(updateData);
 
-        final data = orderSnap.data()!;
-        final currentStatus = data['status'] as String?;
-        final outletId = data['outletId'] as String?;
-
-        if (outletId == null || currentStatus == null) return;
-
-        transaction.update(orderRef, {'status': status});
-
-        // If transitioning from active ('pending', 'prep', 'ready') to inactive
-        final wasActive = ['pending', 'prep', 'ready'].contains(currentStatus);
-        final isNowActive = ['pending', 'prep', 'ready'].contains(status);
-
-        if (wasActive && !isNowActive) {
-          final outletRef = _db.collection('outlets').doc(outletId);
-          final outletSnap = await transaction.get(outletRef);
-          final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
-          final newQueue = (currentQueue > 0) ? currentQueue - 1 : 0;
-          final newWaitTime = newQueue == 0 ? 'No wait' : '${newQueue * 2}-${newQueue * 2 + 3} mins';
-
-          transaction.update(outletRef, {
-            'queueCount': newQueue,
-            'waitTime': newWaitTime,
-          });
-        }
-      });
+      // Decrement queue count for outlet in isolated block
+      if (status == 'completed' || status == 'cancelled') {
+        try {
+          final snap = await orderRef.get();
+          final outletId = snap.data()?['outletId'] as String?;
+          if (outletId != null && outletId.isNotEmpty) {
+            final outletRef = _db.collection('outlets').doc(outletId);
+            final oSnap = await outletRef.get();
+            final currentQueue = oSnap.data()?['queueCount'] as int? ?? 0;
+            final newQueue = currentQueue > 0 ? currentQueue - 1 : 0;
+            final newWaitTime = newQueue == 0 ? 'No wait' : '${newQueue * 2}-${newQueue * 2 + 3} mins';
+            await outletRef.update({
+              'queueCount': newQueue,
+              'waitTime': newWaitTime,
+            });
+          }
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint('Error updating order status: $e');
+      rethrow;
     }
   }
 

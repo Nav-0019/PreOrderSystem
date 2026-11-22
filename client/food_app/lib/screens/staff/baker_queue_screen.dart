@@ -369,8 +369,6 @@ class _OrderTicketState extends State<_OrderTicket> {
           final menuItemId = item['menuItemId'] as String?;
           if (menuItemId != null) {
             final doc = await FirebaseFirestore.instance
-                .collection('outlets')
-                .doc(widget.outletId)
                 .collection('menu_items')
                 .doc(menuItemId)
                 .get();
@@ -649,7 +647,65 @@ class _OrderTicketState extends State<_OrderTicket> {
           if (status == 'ready')
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: _actionBtn('Verify Pickup & Handover ✓', AppTheme.primary, Icons.shopping_bag_outlined, _showPickupVerificationDialog),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF9C3),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFDE047)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.verified_outlined, size: 16, color: Color(0xFF854D0E)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Item ready at counter. Confirm quality & finish handover to archive into History Log.',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF854D0E)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _actionBtn(
+                          'Confirm Quality & Handover ✓',
+                          AppTheme.green,
+                          Icons.verified,
+                          () async {
+                            await _setStatus('completed');
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Quality confirmed! Order finished & logged in History ✓'),
+                                  backgroundColor: AppTheme.green,
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: _actionBtn(
+                          'Verify Code',
+                          AppTheme.primary,
+                          Icons.qr_code_scanner,
+                          _showPickupVerificationDialog,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
         ],
       ),
@@ -747,9 +803,20 @@ class _PastOrderTicket extends StatelessWidget {
                   color: isCompleted ? AppTheme.green.withOpacity(0.1) : AppTheme.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  isCompleted ? '✓ Completed' : '✕ Cancelled',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: isCompleted ? AppTheme.green : AppTheme.red),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isCompleted ? Icons.verified : Icons.cancel_outlined,
+                      size: 11,
+                      color: isCompleted ? AppTheme.green : AppTheme.red,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isCompleted ? 'Quality Passed & Handed Over' : 'Cancelled',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: isCompleted ? AppTheme.green : AppTheme.red),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
