@@ -22,6 +22,7 @@ import {
   Coffee,
   UtensilsCrossed,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -33,6 +34,7 @@ import {
   limit,
   doc,
   updateDoc,
+  deleteDoc,
   setDoc,
   addDoc,
   serverTimestamp,
@@ -93,6 +95,13 @@ export default function Overview() {
   const [newOutletUpi, setNewOutletUpi] = useState('aurabake@upi');
   const [newOutletWait, setNewOutletWait] = useState('5-8 mins');
   const [isSubmittingOutlet, setIsSubmittingOutlet] = useState(false);
+
+  // Edit Outlet Modal state
+  const [editingOutlet, setEditingOutlet] = useState<OutletItem | null>(null);
+  const [editOutletName, setEditOutletName] = useState('');
+  const [editOutletWait, setEditOutletWait] = useState('');
+  const [editOutletUpi, setEditOutletUpi] = useState('');
+  const [isSubmittingOutletEdit, setIsSubmittingOutletEdit] = useState(false);
 
   // Edit UPI Modal state
   const [editingUpiOutlet, setEditingUpiOutlet] = useState<OutletItem | null>(null);
@@ -259,6 +268,43 @@ export default function Overview() {
       alert('Failed to add stall: ' + e);
     } finally {
       setIsSubmittingOutlet(false);
+    }
+  };
+
+  // ─── EDIT & DELETE OUTLET ──────────────────────────────────
+  const handleDeleteOutlet = async (outlet: OutletItem) => {
+    if (!window.confirm(`Are you sure you want to delete stall "${outlet.name}"? This will permanently remove it from the system.`)) return;
+    try {
+      await deleteDoc(doc(db, 'outlets', outlet.id));
+    } catch (e) {
+      console.error('Error deleting outlet:', e);
+      alert('Could not delete outlet: ' + e);
+    }
+  };
+
+  const openEditOutletModal = (outlet: OutletItem) => {
+    setEditingOutlet(outlet);
+    setEditOutletName(outlet.name);
+    setEditOutletWait(outlet.waitTime || '2-5 mins');
+    setEditOutletUpi(outlet.upiId || 'aurabake@upi');
+  };
+
+  const handleSaveOutletEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOutlet || !editOutletName.trim()) return;
+    setIsSubmittingOutletEdit(true);
+    try {
+      await updateDoc(doc(db, 'outlets', editingOutlet.id), {
+        name: editOutletName.trim(),
+        waitTime: editOutletWait.trim(),
+        upiId: editOutletUpi.trim(),
+      });
+      setEditingOutlet(null);
+    } catch (e) {
+      console.error('Error updating outlet:', e);
+      alert('Failed to update outlet: ' + e);
+    } finally {
+      setIsSubmittingOutletEdit(false);
     }
   };
 
@@ -551,11 +597,27 @@ export default function Overview() {
                           </p>
                         </div>
                         
-                        {/* Interactive Toggle Switch */}
-                        <div className="flex items-center gap-2">
+                        {/* Action buttons: Edit, Delete, and Toggle Switch */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => openEditOutletModal(outlet)}
+                            className="w-6 h-6 rounded-full bg-white border border-stone-200 hover:bg-stone-100 flex items-center justify-center text-stone-600 transition-colors"
+                            title="Edit Stall Details"
+                          >
+                            <Edit2 size={11} />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteOutlet(outlet)}
+                            className="w-6 h-6 rounded-full bg-white border border-stone-200 hover:bg-red-50 text-stone-400 hover:text-red-500 flex items-center justify-center transition-colors"
+                            title="Delete Stall"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+
                           <button
                             onClick={() => toggleOutletStatus(outlet.id, isOpen)}
-                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-1 ${
                               isOpen ? 'bg-emerald-500' : 'bg-stone-300'
                             }`}
                             title={`Click to set ${outlet.name} ${isOpen ? 'Offline' : 'Online'}`}
@@ -1150,6 +1212,85 @@ export default function Overview() {
                     className="flex-1 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-[#FACC15] text-xs font-bold shadow-xs transition-transform hover:scale-105 disabled:opacity-50"
                   >
                     {isSubmittingOutlet ? 'Saving...' : 'Create Stall'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── EDIT STALL DETAILS MODAL ─── */}
+      <AnimatePresence>
+        {editingOutlet && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-white rounded-[32px] p-6 shadow-2xl border border-[#E9DFCB] space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">Edit Stall Details</h3>
+                  <p className="text-xs text-stone-500">Configure name, wait time, and UPI credentials</p>
+                </div>
+                <button
+                  onClick={() => setEditingOutlet(null)}
+                  className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveOutletEdit} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Stall Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editOutletName}
+                    onChange={e => setEditOutletName(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:border-stone-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Estimated Wait / Prep Window</label>
+                  <input
+                    type="text"
+                    value={editOutletWait}
+                    onChange={e => setEditOutletWait(e.target.value)}
+                    placeholder="e.g. 2-5 mins"
+                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:border-stone-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Vendor UPI Address</label>
+                  <input
+                    type="text"
+                    required
+                    value={editOutletUpi}
+                    onChange={e => setEditOutletUpi(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 font-mono focus:outline-none focus:border-stone-800"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingOutlet(null)}
+                    className="flex-1 py-2.5 rounded-full border border-stone-300 text-xs font-bold text-stone-700 hover:bg-stone-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingOutletEdit}
+                    className="flex-1 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-[#FACC15] text-xs font-bold shadow-xs transition-transform hover:scale-105 disabled:opacity-50"
+                  >
+                    {isSubmittingOutletEdit ? 'Saving...' : 'Save Stall'}
                   </button>
                 </div>
               </form>
