@@ -11,6 +11,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // Settings Modal State
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -164,31 +165,96 @@ export default function DashboardLayout() {
           {/* Quick Settings Pill (Opens Fillable System Settings Modal) */}
           <button
             onClick={() => setIsSettingsModalOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-stone-300/80 bg-white/60 hover:bg-white text-stone-700 text-xs font-semibold shadow-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-stone-300/80 bg-white/60 hover:bg-white text-stone-700 text-xs font-semibold shadow-xs transition-colors"
             title="System & Platform Settings"
           >
             <Settings size={13} className="text-stone-500" />
             <span>Setting</span>
           </button>
 
-          {/* Notifications Bell */}
+          {/* Notifications Bell with Interactive Dropdown */}
           <div className="relative">
             <button
-              onClick={() => navigate('/approvals')}
+              onClick={() => {
+                setNotificationsOpen(!notificationsOpen);
+                setProfileDropdownOpen(false);
+              }}
               className="w-8 h-8 rounded-full border border-stone-300/80 bg-white/80 hover:bg-white flex items-center justify-center text-stone-700 shadow-xs transition-colors relative"
-              title="Approvals & Alerts"
+              title="Notifications & Alerts"
             >
               <Bell size={14} />
               {pendingApprovalsCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#EAB308] ring-2 ring-white animate-pulse" />
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-[#EAB308] ring-2 ring-white animate-pulse" />
               )}
             </button>
+
+            {notificationsOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-white border border-stone-200 rounded-2xl p-3 shadow-xl z-50 animate-in fade-in slide-in-from-top-1 text-left">
+                <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+                  <span className="text-xs font-bold text-stone-900">Notifications</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FACC15] text-stone-950 font-black">
+                    {pendingApprovalsCount} new
+                  </span>
+                </div>
+
+                <div className="py-2 space-y-2">
+                  {pendingApprovalsCount > 0 ? (
+                    <div
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        navigate('/approvals');
+                      }}
+                      className="p-2 rounded-xl bg-amber-50/70 border border-amber-200/60 hover:bg-amber-100/60 cursor-pointer transition-colors"
+                    >
+                      <p className="text-xs font-bold text-stone-900">Pending Menu Submissions</p>
+                      <p className="text-[10px] text-stone-600">
+                        {pendingApprovalsCount} new item{pendingApprovalsCount > 1 ? 's' : ''} submitted by stall managers awaiting review.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-400 py-1 text-center">No pending approvals</p>
+                  )}
+
+                  <div
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      navigate('/queue');
+                    }}
+                    className="p-2 rounded-xl bg-stone-50 border border-stone-100 hover:bg-stone-100 cursor-pointer transition-colors"
+                  >
+                    <p className="text-xs font-bold text-stone-900">Live Kitchen Queue</p>
+                    <p className="text-[10px] text-stone-500">Live order fulfillment and dispatch tracker.</p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-[11px]">
+                  <button
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      navigate('/approvals');
+                    }}
+                    className="text-stone-900 font-bold hover:underline"
+                  >
+                    View All Approvals →
+                  </button>
+                  <button
+                    onClick={() => setNotificationsOpen(false)}
+                    className="text-stone-400 hover:text-stone-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* User Profile Capsule */}
           <div className="relative">
             <button
-              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+              onClick={() => {
+                setProfileDropdownOpen(!profileDropdownOpen);
+                setNotificationsOpen(false);
+              }}
               className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border border-stone-300/80 bg-white/80 hover:bg-white text-stone-800 transition-all shadow-xs"
             >
               <div className="w-6 h-6 rounded-full bg-[#18181B] text-white flex items-center justify-center text-[10px] font-black">
@@ -199,10 +265,15 @@ export default function DashboardLayout() {
             </button>
 
             {profileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-stone-200 rounded-2xl p-2 shadow-xl z-50 animate-in fade-in slide-in-from-top-1">
+              <div className="absolute right-0 mt-2 w-52 bg-white border border-stone-200 rounded-2xl p-2 shadow-xl z-50 animate-in fade-in slide-in-from-top-1">
                 <div className="px-3 py-2 border-b border-stone-100">
-                  <p className="text-xs font-bold text-stone-900">Administrator</p>
-                  <p className="text-[11px] text-stone-400 truncate">admin@aurabake.app</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-stone-900">Administrator</p>
+                    <span className="text-[9px] bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 font-semibold">Master</span>
+                  </div>
+                  <p className="text-[11px] text-stone-400 truncate mt-0.5">
+                    {auth.currentUser?.email || 'admin@aurabake.app'}
+                  </p>
                 </div>
                 <button
                   onClick={() => {
@@ -212,7 +283,7 @@ export default function DashboardLayout() {
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition-colors mt-1"
                 >
                   <Settings size={13} />
-                  Settings
+                  System Settings
                 </button>
                 <button
                   onClick={handleLogout}

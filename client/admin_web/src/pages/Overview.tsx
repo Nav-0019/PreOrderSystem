@@ -5,8 +5,6 @@ import {
   Pause,
   RotateCcw,
   Clock,
-  Store,
-  ShoppingBag,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -18,11 +16,13 @@ import {
   Smartphone,
   Printer,
   Volume2,
-  Zap,
   Coffee,
   UtensilsCrossed,
   Sparkles,
   Trash2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -68,6 +68,32 @@ interface OutletItem {
   upiId?: string;
 }
 
+interface TimeSlot {
+  id: string;
+  outletId: string;
+  outletName?: string;
+  window: string;
+  label: string;
+  startTime?: string;
+  endTime?: string;
+  capacity: number;
+  currentOrders?: number;
+  isActive?: boolean;
+}
+
+interface OrderRecord {
+  id: string;
+  outletId?: string;
+  outletName?: string;
+  token?: string | number;
+  customerName?: string;
+  pickupSlot?: string;
+  status: string;
+  totalAmount: number;
+  items?: any[];
+  createdAt?: any;
+}
+
 export default function Overview() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [activeQueue, setActiveQueue] = useState(0);
@@ -75,12 +101,14 @@ export default function Overview() {
   const [outlets, setOutlets] = useState<OutletItem[]>([]);
   const [avgWaitMinutes, setAvgWaitMinutes] = useState(4);
   const [pendingTickets, setPendingTickets] = useState<ApprovalTicket[]>([]);
-  
+  const [rawOrders, setRawOrders] = useState<OrderRecord[]>([]);
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+
   // Rush hour mode toggle
   const [isRushMode, setIsRushMode] = useState(false);
 
   // Time Tracker Dial State
-  const [isTimerPlaying, setIsTimerPlaying] = useState(true);
+  const [isTimerPlaying, setIsTimerPlaying] = useState(false);
   const [timerInitialSeconds, setTimerInitialSeconds] = useState(155); // 02:35
   const [timerSeconds, setTimerSeconds] = useState(155);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -92,8 +120,8 @@ export default function Overview() {
   const [isAddOutletModalOpen, setIsAddOutletModalOpen] = useState(false);
   const [newOutletName, setNewOutletName] = useState('');
   const [newOutletId, setNewOutletId] = useState('');
-  const [newOutletUpi, setNewOutletUpi] = useState('aurabake@upi');
-  const [newOutletWait, setNewOutletWait] = useState('5-8 mins');
+  const [newOutletUpi, setNewOutletUpi] = useState('7310347742@nyes');
+  const [newOutletWait, setNewOutletWait] = useState('2-5 mins');
   const [isSubmittingOutlet, setIsSubmittingOutlet] = useState(false);
 
   // Edit Outlet Modal state
@@ -112,27 +140,54 @@ export default function Overview() {
   const [rejectingTicket, setRejectingTicket] = useState<ApprovalTicket | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
-  // Selected Day in Dispatch Schedule
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-
-  // Pickup slot capacities
-  const [slotCapacities, setSlotCapacities] = useState({
-    slot1: 20,
-    slot2: 25,
-    slot3: 20,
+  // ─── DYNAMIC SCHEDULE & CALENDAR STATE ────────────────────────
+  const [selectedMonthDate, setSelectedMonthDate] = useState<Date>(new Date());
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
   });
 
-  // ─── FIRESTORE LISTENERS ────────────────────────────────────
+  // Modal: Add Slot State
+  const [isAddSlotModalOpen, setIsAddSlotModalOpen] = useState(false);
+  const [newSlotWindow, setNewSlotWindow] = useState('01:15 PM - 01:30 PM');
+  const [newSlotLabel, setNewSlotLabel] = useState('Afternoon Wave 3');
+  const [newSlotCapacity, setNewSlotCapacity] = useState('20');
+  const [newSlotStartTime, setNewSlotStartTime] = useState('13:15');
+  const [newSlotEndTime, setNewSlotEndTime] = useState('13:30');
+  const [newSlotOutletId, setNewSlotOutletId] = useState('2000');
+  const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
+
+  // Modal: Slot Details / Edit Capacity
+  const [selectedSlotForModal, setSelectedSlotForModal] = useState<TimeSlot | null>(null);
+
+  // Device status & interactive test alerts
+  const [deviceStatuses, setDeviceStatuses] = useState({
+    dev1: true, // Baker Phone
+    dev2: true, // Epson Printer
+    dev3: true, // Counter Chime
+  });
+  const [deviceToast, setDeviceToast] = useState<string | null>(null);
+
+  // ─── FIRESTORE REAL-TIME LISTENERS ───────────────────────────
   useEffect(() => {
     // 1. Orders listener
-    const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(150));
+    const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(200));
     const unsubOrders = onSnapshot(qOrders, (snap) => {
-      const orders = snap.docs.map(d => d.data());
-      setTotalOrders(orders.length);
-      const active = orders.filter(o => ['pending', 'prep', 'ready'].includes(o.status)).length;
+      const orders: OrderRecord[] = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+      } as OrderRecord));
+
+      setRawOrders(orders);
+
+      // Filter active orders (only non-cancelled, active outlets)
+      const validOrders = orders.filter(o => o.status !== 'cancelled');
+      setTotalOrders(validOrders.length);
+
+      const active = validOrders.filter(o => ['pending', 'prep', 'ready'].includes(o.status)).length;
       setActiveQueue(active);
       setAvgWaitMinutes(Math.max(2, active * 2));
-      const totalRev = orders.filter(o => o.status !== 'cancelled').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+
+      const totalRev = validOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
       setRevenue(totalRev);
     });
 
@@ -141,7 +196,16 @@ export default function Overview() {
       setOutlets(snap.docs.map(d => ({ id: d.id, ...d.data() } as OutletItem)));
     });
 
-    // 3. Approval Tickets listener (combining menu_items and approval_tickets)
+    // 3. Time Slots listener
+    const unsubSlots = onSnapshot(collection(db, 'time_slots'), (snap) => {
+      const slots: TimeSlot[] = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+      } as TimeSlot));
+      setTimeSlots(slots);
+    });
+
+    // 4. Approval Tickets listener
     let rawMenuItems: ApprovalTicket[] = [];
     let rawApprovalTickets: ApprovalTicket[] = [];
 
@@ -199,16 +263,24 @@ export default function Overview() {
     return () => {
       unsubOrders();
       unsubOutlets();
+      unsubSlots();
       unsubMenu();
       if (unsubTickets) unsubTickets();
     };
   }, []);
 
-  // ─── WORKING TIME TRACKER DIAL (TICKING SECONDS) ────────────
+  // ─── WORKING KITCHEN TIME TRACKER ───────────────────────────
   useEffect(() => {
     if (isTimerPlaying) {
       timerRef.current = setInterval(() => {
-        setTimerSeconds((prev) => (prev > 0 ? prev - 1 : timerInitialSeconds));
+        setTimerSeconds(prev => {
+          if (prev <= 1) {
+            playChime();
+            setDeviceToast('🔔 Dispatch Timer Elapsed: Next pickup wave ready!');
+            return timerInitialSeconds;
+          }
+          return prev - 1;
+        });
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -231,7 +303,167 @@ export default function Overview() {
     setIsTimerPlaying(true);
   };
 
-  // ─── OUTLET STATUS TOGGLE (OPEN / CLOSED) ───────────────────
+  // Play browser audio chime
+  const playChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (_) {}
+  };
+
+  // ─── MONTH NAVIGATION ───────────────────────────────────────
+  const handlePrevMonth = () => {
+    setSelectedMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setSelectedMonthDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const getMonthName = (date: Date, offset = 0) => {
+    const d = new Date(date.getFullYear(), date.getMonth() + offset, 1);
+    return d.toLocaleString('en-US', { month: 'long' });
+  };
+
+  const getFullMonthYear = (date: Date) => {
+    return date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  // Generate 7 days for the selected week around the selected date
+  const generateDaysRow = () => {
+    const curr = new Date(selectedMonthDate);
+    const dayOfWeek = curr.getDay(); // 0 is Sunday
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(curr);
+    monday.setDate(curr.getDate() + diffToMonday);
+
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dayStr = d.toISOString().split('T')[0];
+      const dayName = d.toLocaleString('en-US', { weekday: 'short' });
+      const dayNum = d.getDate();
+      days.push({
+        dateStr: dayStr,
+        label: `${dayName} ${dayNum}`,
+        isToday: dayStr === new Date().toISOString().split('T')[0],
+      });
+    }
+    return days;
+  };
+
+  const currentWeekDays = generateDaysRow();
+
+  // ─── SLOT STATUS HELPER ─────────────────────────────────────
+  const getSlotStatus = (slot: TimeSlot) => {
+    if (!slot.startTime || !slot.endTime) return 'upcoming';
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+
+    const [startH, startM] = slot.startTime.split(':').map(Number);
+    const [endH, endM] = slot.endTime.split(':').map(Number);
+    const slotStart = (startH || 0) * 60 + (startM || 0);
+    const slotEnd = (endH || 0) * 60 + (endM || 0);
+
+    if (currentMin >= slotStart && currentMin <= slotEnd) return 'live';
+    if (currentMin < slotStart) return 'upcoming';
+    return 'closed';
+  };
+
+  // ─── SLOT ACTIONS: ADJUST CAPACITY & DELETE ──────────────────
+  const handleAdjustCapacity = async (slotId: string, currentCap: number, delta: number) => {
+    const newCap = Math.max(5, currentCap + delta);
+    try {
+      await updateDoc(doc(db, 'time_slots', slotId), { capacity: newCap });
+      if (selectedSlotForModal && selectedSlotForModal.id === slotId) {
+        setSelectedSlotForModal(prev => prev ? { ...prev, capacity: newCap } : null);
+      }
+    } catch (e) {
+      console.error('Failed to update slot capacity:', e);
+      alert('Could not update capacity: ' + e);
+    }
+  };
+
+  const handleDeleteSlot = async (slotId: string) => {
+    if (!window.confirm('Delete this pickup slot?')) return;
+    try {
+      await deleteDoc(doc(db, 'time_slots', slotId));
+      setSelectedSlotForModal(null);
+    } catch (e) {
+      console.error('Error deleting slot:', e);
+      alert('Failed to delete slot: ' + e);
+    }
+  };
+
+  const handleAddSlotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSlotWindow.trim() || !newSlotLabel.trim()) return;
+
+    setIsSubmittingSlot(true);
+    try {
+      const outlet = outlets.find(o => o.id === newSlotOutletId) || outlets[0];
+      await addDoc(collection(db, 'time_slots'), {
+        outletId: newSlotOutletId,
+        outletName: outlet ? outlet.name : `Outlet ${newSlotOutletId}`,
+        window: newSlotWindow.trim(),
+        label: newSlotLabel.trim(),
+        startTime: newSlotStartTime,
+        endTime: newSlotEndTime,
+        capacity: parseInt(newSlotCapacity) || 20,
+        currentOrders: 0,
+        isActive: true,
+        createdAt: serverTimestamp(),
+      });
+      setIsAddSlotModalOpen(false);
+      setNewSlotWindow('');
+      setNewSlotLabel('');
+    } catch (e) {
+      console.error('Error adding slot:', e);
+      alert('Failed to add slot: ' + e);
+    } finally {
+      setIsSubmittingSlot(false);
+    }
+  };
+
+  // ─── ORDER VELOCITY METRICS & BAR CHART CALCULATION ─────────
+  const weeklyDayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
+
+  rawOrders.forEach(o => {
+    if (o.status !== 'cancelled' && o.createdAt) {
+      let d: Date | null = null;
+      if (typeof o.createdAt.toDate === 'function') {
+        d = o.createdAt.toDate();
+      } else if (o.createdAt.seconds) {
+        d = new Date(o.createdAt.seconds * 1000);
+      } else {
+        d = new Date(o.createdAt);
+      }
+      if (d && !isNaN(d.getTime())) {
+        weeklyCounts[d.getDay()] += 1;
+      }
+    }
+  });
+
+  // Calculate realistic peak day
+  const maxWeeklyCount = Math.max(...weeklyCounts, 1);
+  const peakDayIdx = weeklyCounts.indexOf(Math.max(...weeklyCounts));
+  const velocityPerHour = Math.max(1, activeQueue * 2 + Math.min(weeklyCounts[new Date().getDay()], 15));
+
+  // ─── OUTLET STATUS TOGGLE ────────────────────────────────────
   const toggleOutletStatus = async (outletId: string, currentIsOpen: boolean) => {
     try {
       await updateDoc(doc(db, 'outlets', outletId), {
@@ -243,22 +475,28 @@ export default function Overview() {
     }
   };
 
-  // ─── ADD NEW OUTLET / STALL ─────────────────────────────────
+  // ─── ADD NEW OUTLET ──────────────────────────────────────────
   const handleAddOutlet = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOutletName.trim()) return;
 
     setIsSubmittingOutlet(true);
     try {
-      const generatedId = newOutletId.trim() || newOutletName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-      await setDoc(doc(db, 'outlets', generatedId), {
+      const targetId = newOutletId.trim() || newOutletName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const outletData = {
         name: newOutletName.trim(),
         isOpen: true,
         queueCount: 0,
-        waitTime: newOutletWait.trim() || '5 mins',
-        upiId: newOutletUpi.trim() || 'aurabake@upi',
+        waitTime: newOutletWait || '2-5 mins',
+        upiId: newOutletUpi || '7310347742@nyes',
         createdAt: serverTimestamp(),
-      });
+      };
+
+      if (newOutletId.trim()) {
+        await setDoc(doc(db, 'outlets', targetId), outletData);
+      } else {
+        await addDoc(collection(db, 'outlets'), outletData);
+      }
 
       setIsAddOutletModalOpen(false);
       setNewOutletName('');
@@ -271,54 +509,55 @@ export default function Overview() {
     }
   };
 
-  // ─── EDIT & DELETE OUTLET ──────────────────────────────────
-  const handleDeleteOutlet = async (outlet: OutletItem) => {
-    if (!window.confirm(`Are you sure you want to delete stall "${outlet.name}"? This will permanently remove it from the system.`)) return;
-    try {
-      await deleteDoc(doc(db, 'outlets', outlet.id));
-    } catch (e) {
-      console.error('Error deleting outlet:', e);
-      alert('Could not delete outlet: ' + e);
-    }
-  };
-
-  const openEditOutletModal = (outlet: OutletItem) => {
-    setEditingOutlet(outlet);
-    setEditOutletName(outlet.name);
-    setEditOutletWait(outlet.waitTime || '2-5 mins');
-    setEditOutletUpi(outlet.upiId || 'aurabake@upi');
+  // ─── EDIT OUTLET DETAILS ─────────────────────────────────────
+  const openEditOutletModal = (o: OutletItem) => {
+    setEditingOutlet(o);
+    setEditOutletName(o.name);
+    setEditOutletWait(o.waitTime || '2-5 mins');
+    setEditOutletUpi(o.upiId || '7310347742@nyes');
   };
 
   const handleSaveOutletEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOutlet || !editOutletName.trim()) return;
+
     setIsSubmittingOutletEdit(true);
     try {
       await updateDoc(doc(db, 'outlets', editingOutlet.id), {
         name: editOutletName.trim(),
-        waitTime: editOutletWait.trim(),
+        waitTime: editOutletWait.trim() || '2-5 mins',
         upiId: editOutletUpi.trim(),
       });
       setEditingOutlet(null);
     } catch (e) {
       console.error('Error updating outlet:', e);
-      alert('Failed to update outlet: ' + e);
+      alert('Failed to update stall details: ' + e);
     } finally {
       setIsSubmittingOutletEdit(false);
     }
   };
 
-  // ─── SAVE EDITED UPI ID ─────────────────────────────────────
+  const handleDeleteOutlet = async (outletId: string, outletName: string) => {
+    if (!window.confirm(`Permanently delete stall "${outletName}"? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'outlets', outletId));
+    } catch (e) {
+      console.error('Error deleting outlet:', e);
+      alert('Failed to delete stall: ' + e);
+    }
+  };
+
+  // ─── SAVE UPI ────────────────────────────────────────────────
   const handleSaveUpi = async () => {
-    if (!editingUpiOutlet) return;
+    if (!editingUpiOutlet || !editUpiValue.trim()) return;
     try {
       await updateDoc(doc(db, 'outlets', editingUpiOutlet.id), {
         upiId: editUpiValue.trim(),
       });
       setEditingUpiOutlet(null);
     } catch (e) {
-      console.error('Error updating UPI ID:', e);
-      alert('Failed to update UPI ID: ' + e);
+      console.error('Error updating UPI:', e);
+      alert('Failed to update UPI ID');
     }
   };
 
@@ -328,7 +567,7 @@ export default function Overview() {
     setTimeout(() => setCopiedUpiId(null), 2000);
   };
 
-  // ─── QUICK APPROVE TICKET ───────────────────────────────────
+  // ─── QUICK APPROVE TICKET ────────────────────────────────────
   const handleQuickApprove = async (ticket: ApprovalTicket) => {
     try {
       if (ticket.sourceDoc === 'menu_items') {
@@ -340,14 +579,12 @@ export default function Overview() {
         });
       } else {
         await addDoc(collection(db, 'menu_items'), {
-          name: ticket.itemData.name,
-          price: Number(ticket.itemData.price),
-          category: ticket.itemData.category || 'Snacks',
-          prepTime: Number(ticket.itemData.prepTime || 5),
+          ...ticket.itemData,
+          outletId: ticket.outletId,
+          outletName: ticket.outletName,
           isAvailable: true,
           isApproved: true,
           approvalStatus: 'approved',
-          outletId: ticket.outletId,
           createdAt: serverTimestamp(),
         });
 
@@ -393,10 +630,10 @@ export default function Overview() {
     }
   };
 
-  // ─── APPROVE ALL PENDING TICKETS ────────────────────────────
+  // ─── APPROVE ALL TICKETS ────────────────────────────────────
   const handleApproveAll = async () => {
     if (pendingTickets.length === 0) return;
-    if (!window.confirm(`Approve and publish all ${pendingTickets.length} pending items to the live menu?`)) return;
+    if (!window.confirm(`Approve all ${pendingTickets.length} pending items to the live menu?`)) return;
 
     for (const ticket of pendingTickets) {
       await handleQuickApprove(ticket);
@@ -414,27 +651,35 @@ export default function Overview() {
     return <Sparkles size={14} className="text-emerald-400" />;
   };
 
-  // Days list for dispatch calendar
-  const scheduleDays = [
-    { label: 'Mon 22', date: '2026-11-22' },
-    { label: 'Tue 23', date: '2026-11-23' },
-    { label: 'Wed 24', date: '2026-11-24' },
-    { label: 'Thu 25', date: '2026-11-25' },
-    { label: 'Fri 26', date: '2026-11-26' },
-    { label: 'Sat 27', date: '2026-11-27' },
-  ];
-
   return (
     <div className="space-y-6">
-      {/* ─── HERO HEADER & HIGH-LEVEL RATIOS (CREXTIO STYLE) ─── */}
+      {/* ─── TOAST NOTIFICATION ─── */}
+      <AnimatePresence>
+        {deviceToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-5 right-5 z-50 bg-[#18181B] text-[#FACC15] px-4 py-3 rounded-2xl shadow-2xl border border-stone-800 text-xs font-bold flex items-center gap-2"
+          >
+            <span>{deviceToast}</span>
+            <button
+              onClick={() => setDeviceToast(null)}
+              className="ml-2 text-stone-400 hover:text-white"
+            >
+              <X size={12} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── HERO HEADER & HIGH-LEVEL RATIOS ─── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-1">
-        {/* Left: Greeting + Segmented Ratio Bar */}
         <div className="space-y-3">
           <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-stone-900">
             Welcome in, <span className="font-semibold text-black">AuraBake</span>
           </h1>
 
-          {/* Segmented Progress Pills (Matching Crextio Top Capsule Badges) */}
           <div className="flex items-center gap-2 flex-wrap text-[11px] font-bold">
             <Link
               to="/approvals"
@@ -445,198 +690,167 @@ export default function Overview() {
             </Link>
 
             <Link
-              to="/queue"
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#FDE047] hover:bg-yellow-300 text-stone-950 rounded-full shadow-xs transition-colors"
+              to="/menu"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-full transition-colors"
             >
-              <span>Active Queue</span>
-              <span>{activeQueue}</span>
+              <span>Catalog</span>
+              <span className="text-stone-900 font-extrabold">{outlets.length} Outlets</span>
             </Link>
 
-            <button
-              onClick={() => setExpandedSection('outlets')}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-white border border-[#E4DCB5] hover:bg-stone-50 rounded-full text-stone-700 shadow-xs transition-colors"
+            <Link
+              to="/queue"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-full border border-amber-200/60 transition-colors"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Campus Outlets: {outlets.filter(o => o.isOpen !== false).length}/{outlets.length} Open</span>
-            </button>
+              <Clock size={11} className="text-amber-700" />
+              <span>Wait ~{avgWaitMinutes}m</span>
+            </Link>
 
-            <div className="px-3.5 py-1.5 bg-white/70 border border-stone-300/80 rounded-full text-stone-600">
-              Output: {totalOrders > 0 ? Math.round(((totalOrders - activeQueue) / totalOrders) * 100) : 96}%
-            </div>
+            <Link
+              to="/queue"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-full transition-colors"
+            >
+              <span>Total Orders</span>
+              <span className="text-stone-900 font-extrabold">{totalOrders}</span>
+            </Link>
           </div>
         </div>
 
-        {/* Right: Big Clean Numerical Counters */}
-        <div className="flex items-center gap-8 self-start lg:self-center">
-          {/* Outlets */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-white border border-stone-300/70 flex items-center justify-center text-stone-600 shadow-xs">
-              <Store size={14} />
-            </div>
-            <div>
-              <p className="text-3xl font-light tracking-tight text-stone-900 leading-none">
-                {outlets.length}
-              </p>
-              <p className="text-[10px] font-bold text-stone-400 mt-1 uppercase tracking-wider">Outlets</p>
-            </div>
+        {/* Global Rush Mode Toggle */}
+        <div className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-full border border-[#E9DFCB] shadow-xs self-start lg:self-auto">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${isRushMode ? 'bg-[#FACC15] animate-ping' : 'bg-emerald-500'}`} />
+            <span className="text-xs font-bold text-stone-800">
+              {isRushMode ? 'Rush Mode Active ⚡' : 'Normal Flow 🟢'}
+            </span>
           </div>
-
-          {/* Active Queue */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-white border border-stone-300/70 flex items-center justify-center text-stone-600 shadow-xs">
-              <Clock size={14} />
-            </div>
-            <div>
-              <p className="text-3xl font-light tracking-tight text-stone-900 leading-none">
-                {activeQueue}
-              </p>
-              <p className="text-[10px] font-bold text-stone-400 mt-1 uppercase tracking-wider">Queue</p>
-            </div>
-          </div>
-
-          {/* Total Volume */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-[#18181B] text-[#FACC15] flex items-center justify-center shadow-xs">
-              <ShoppingBag size={14} />
-            </div>
-            <div>
-              <p className="text-3xl font-light tracking-tight text-stone-900 leading-none">
-                {revenue > 1000 ? `₹${(revenue / 1000).toFixed(1)}k` : `₹${revenue.toFixed(0)}`}
-              </p>
-              <p className="text-[10px] font-bold text-stone-400 mt-1 uppercase tracking-wider">Volume</p>
-            </div>
-          </div>
+          <button
+            onClick={() => setIsRushMode(!isRushMode)}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+              isRushMode ? 'bg-[#18181B]' : 'bg-stone-200'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                isRushMode ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
       </div>
 
-      {/* ─── BENTO GRID LAYOUT (EXACT CREXTIO 3-COLUMN STRUCTURE) ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
+      {/* ─── CREXTIO BENTO GRID LAYOUT ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
         {/* ── LEFT COLUMN (SPAN 3) ── */}
         <div className="lg:col-span-3 space-y-5">
-          {/* Spotlight Card (Profile / Executive Master - Crextio Lora Piterson equivalent) */}
+          {/* Card A: Gross Revenue Card */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-[30px] p-5 border border-[#E9DFCB] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] relative overflow-hidden"
+            className="bg-white rounded-[30px] p-6 border border-[#E9DFCB] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)]"
           >
-            <div className="relative rounded-[22px] overflow-hidden aspect-[4/3] bg-gradient-to-tr from-stone-900 to-stone-700">
-              <img
-                src="https://images.unsplash.com/photo-1577219491135-ce391730fb2c?auto=format&fit=crop&q=80&w=600"
-                alt="Executive Store Admin"
-                className="w-full h-full object-cover mix-blend-overlay opacity-90 hover:scale-105 transition-transform duration-500"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
-              
-              <div className="absolute top-3 right-3">
-                <button
-                  onClick={() => setIsRushMode(!isRushMode)}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-wide uppercase transition-colors shadow-sm flex items-center gap-1 ${
-                    isRushMode
-                      ? 'bg-amber-400 text-stone-950 animate-pulse'
-                      : 'bg-white/20 backdrop-blur-md text-white border border-white/30'
-                  }`}
-                  title="Toggle Rush Hour Dispatch Mode"
-                >
-                  <Zap size={10} />
-                  <span>{isRushMode ? 'Rush Mode ON' : 'Standard'}</span>
-                </button>
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-stone-500">Live Campus Revenue</span>
+              <Link to="/analytics" className="w-6 h-6 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 transition-colors">
+                <ArrowUpRight size={13} />
+              </Link>
+            </div>
 
-              <div className="absolute bottom-3.5 left-3.5 right-3.5 flex items-end justify-between text-white">
-                <div>
-                  <p className="text-sm font-bold">Chef Arjun Sharma</p>
-                  <p className="text-[11px] text-stone-300 font-medium">Head of Operations</p>
-                </div>
-                <div className="px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-[11px] font-bold">
-                  ₹{revenue.toFixed(0)}
-                </div>
+            <div className="mt-4">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl sm:text-4xl font-normal tracking-tight text-stone-900">
+                  ₹{revenue.toLocaleString('en-IN')}
+                </span>
+                <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full ml-1">
+                  +18.4%
+                </span>
               </div>
+              <p className="text-[11px] text-stone-400 mt-1">Settled & in-kitchen orders</p>
             </div>
           </motion.div>
 
-          {/* Outlets & Campus System Accordion (Crextio Left Card 2) */}
+          {/* Card B: Left Control Accordions */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white rounded-[30px] p-5 border border-[#E9DFCB] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] space-y-3"
+            className="bg-white rounded-[30px] p-5 sm:p-6 border border-[#E9DFCB] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] space-y-4"
           >
-            {/* Outlets Item */}
+            {/* Campus Outlets Accordion */}
             <div className="border-b border-stone-100 pb-3">
-              <div className="w-full flex items-center justify-between text-left">
+              <div className="flex items-center justify-between">
                 <button
                   onClick={() => setExpandedSection(expandedSection === 'outlets' ? null : 'outlets')}
-                  className="flex-1 flex items-center justify-between pr-2"
+                  className="flex items-center gap-1.5 text-xs font-bold text-stone-900 text-left"
                 >
-                  <span className="text-xs font-bold text-stone-900">Campus Outlets</span>
+                  <span>Campus Outlets ({outlets.length})</span>
                   {expandedSection === 'outlets' ? <ChevronUp size={14} className="text-stone-400" /> : <ChevronDown size={14} className="text-stone-400" />}
                 </button>
                 <button
                   onClick={() => setIsAddOutletModalOpen(true)}
-                  className="w-6 h-6 rounded-full bg-[#18181B] hover:bg-black text-[#FACC15] flex items-center justify-center shadow-xs transition-transform hover:scale-110"
-                  title="Add New Campus Stall"
+                  className="w-5 h-5 rounded-full bg-stone-900 hover:bg-black text-[#FACC15] flex items-center justify-center text-xs shadow-xs"
+                  title="Add Stall"
                 >
-                  <Plus size={13} />
+                  <Plus size={11} />
                 </button>
               </div>
 
               {expandedSection === 'outlets' && (
-                <div className="mt-3 space-y-2">
-                  {outlets.map((outlet) => {
-                    const isOpen = outlet.isOpen !== false;
-                    return (
+                <div className="mt-3 space-y-2.5">
+                  {outlets.length === 0 ? (
+                    <p className="text-[11px] text-stone-400 py-2">No active stalls found.</p>
+                  ) : (
+                    outlets.map((outlet) => (
                       <div
                         key={outlet.id}
-                        className="flex items-center justify-between p-2.5 rounded-2xl bg-stone-50 border border-stone-100 text-xs hover:border-stone-200 transition-colors"
+                        className="p-2.5 bg-stone-50 rounded-2xl border border-stone-100 flex items-center justify-between"
                       >
-                        <div>
-                          <p className="font-bold text-stone-900">{outlet.name}</p>
+                        <div className="flex-1 pr-2">
+                          <p className="text-xs font-bold text-stone-900 truncate">{outlet.name}</p>
                           <p className="text-[10px] text-stone-400">
-                            Queue: {outlet.queueCount || 0} • {outlet.waitTime || 'No wait'}
+                            Queue: {outlet.queueCount || 0} • {outlet.waitTime || '2-5 mins'}
                           </p>
                         </div>
-                        
-                        {/* Action buttons: Edit, Delete, and Toggle Switch */}
-                        <div className="flex items-center gap-1.5">
+
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             onClick={() => openEditOutletModal(outlet)}
-                            className="w-6 h-6 rounded-full bg-white border border-stone-200 hover:bg-stone-100 flex items-center justify-center text-stone-600 transition-colors"
-                            title="Edit Stall Details"
+                            className="w-6 h-6 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-500 hover:text-stone-900 shadow-2xs"
+                            title="Edit Stall"
                           >
                             <Edit2 size={11} />
                           </button>
 
                           <button
-                            onClick={() => handleDeleteOutlet(outlet)}
-                            className="w-6 h-6 rounded-full bg-white border border-stone-200 hover:bg-red-50 text-stone-400 hover:text-red-500 flex items-center justify-center transition-colors"
+                            onClick={() => handleDeleteOutlet(outlet.id, outlet.name)}
+                            className="w-6 h-6 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-400 hover:text-red-600 shadow-2xs"
                             title="Delete Stall"
                           >
                             <Trash2 size={11} />
                           </button>
 
                           <button
-                            onClick={() => toggleOutletStatus(outlet.id, isOpen)}
-                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ml-1 ${
-                              isOpen ? 'bg-emerald-500' : 'bg-stone-300'
+                            onClick={() => toggleOutletStatus(outlet.id, outlet.isOpen !== false)}
+                            className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                              outlet.isOpen !== false ? 'bg-emerald-500' : 'bg-stone-300'
                             }`}
-                            title={`Click to set ${outlet.name} ${isOpen ? 'Offline' : 'Online'}`}
+                            title={outlet.isOpen !== false ? 'Stall Open' : 'Stall Closed'}
                           >
                             <span
-                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                isOpen ? 'translate-x-4' : 'translate-x-0'
+                              className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                outlet.isOpen !== false ? 'translate-x-3' : 'translate-x-0'
                               }`}
                             />
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
+                    ))
+                  )}
                 </div>
               )}
             </div>
 
-            {/* UPI & Payment Config (Interactive with Copy & Edit) */}
+            {/* Payment Terminals (UPI) */}
             <div className="border-b border-stone-100 pb-3">
               <button
                 onClick={() => setExpandedSection(expandedSection === 'upi' ? null : 'upi')}
@@ -652,11 +866,11 @@ export default function Overview() {
                     <div key={o.id} className="p-2.5 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between text-[11px]">
                       <div>
                         <p className="font-bold text-stone-900">{o.name}</p>
-                        <p className="font-mono text-stone-400 text-[10px]">{o.upiId || 'aurabake@upi'}</p>
+                        <p className="font-mono text-stone-400 text-[10px]">{o.upiId || '7310347742@nyes'}</p>
                       </div>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => copyToClipboard(o.upiId || 'aurabake@upi', o.id)}
+                          onClick={() => copyToClipboard(o.upiId || '7310347742@nyes', o.id)}
                           className="w-6 h-6 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-600 hover:text-stone-900"
                           title="Copy UPI ID"
                         >
@@ -665,7 +879,7 @@ export default function Overview() {
                         <button
                           onClick={() => {
                             setEditingUpiOutlet(o);
-                            setEditUpiValue(o.upiId || 'aurabake@upi');
+                            setEditUpiValue(o.upiId || '7310347742@nyes');
                           }}
                           className="w-6 h-6 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-600 hover:text-stone-900"
                           title="Edit UPI ID"
@@ -679,60 +893,60 @@ export default function Overview() {
               )}
             </div>
 
-            {/* Pickup Slots & Capacities */}
+            {/* Pickup Slot Windows (Connected to Firestore) */}
             <div className="border-b border-stone-100 pb-3">
               <button
                 onClick={() => setExpandedSection(expandedSection === 'slots' ? null : 'slots')}
                 className="w-full flex items-center justify-between text-left"
               >
-                <span className="text-xs font-bold text-stone-900">Pickup Slot Windows</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-stone-900">Pickup Slot Windows</span>
+                  <span className="text-[10px] px-1.5 py-0.2 bg-stone-100 rounded-full font-bold text-stone-600">
+                    {timeSlots.length}
+                  </span>
+                </div>
                 {expandedSection === 'slots' ? <ChevronUp size={14} className="text-stone-400" /> : <ChevronDown size={14} className="text-stone-400" />}
               </button>
 
               {expandedSection === 'slots' && (
                 <div className="mt-2.5 space-y-2 text-[11px] text-stone-600">
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-stone-50 border border-stone-100">
-                    <span>12:30 PM - 12:40 PM</span>
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <button
-                        onClick={() => setSlotCapacities(c => ({ ...c, slot1: Math.max(5, c.slot1 - 5) }))}
-                        className="w-5 h-5 rounded-md bg-white border border-stone-200 text-stone-700 flex items-center justify-center"
-                      >
-                        -
-                      </button>
-                      <span className="w-6 text-center">{slotCapacities.slot1}</span>
-                      <button
-                        onClick={() => setSlotCapacities(c => ({ ...c, slot1: c.slot1 + 5 }))}
-                        className="w-5 h-5 rounded-md bg-white border border-stone-200 text-stone-700 flex items-center justify-center"
-                      >
-                        +
-                      </button>
+                  {timeSlots.map(slot => (
+                    <div key={slot.id} className="flex items-center justify-between p-2 rounded-xl bg-stone-50 border border-stone-100">
+                      <div>
+                        <p className="font-bold text-stone-800 text-[11px]">{slot.window}</p>
+                        <p className="text-[9px] text-stone-400">{slot.label}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <button
+                          onClick={() => handleAdjustCapacity(slot.id, slot.capacity, -5)}
+                          className="w-5 h-5 rounded-md bg-white border border-stone-200 text-stone-700 flex items-center justify-center hover:bg-stone-100"
+                          title="Reduce Capacity (-5)"
+                        >
+                          -
+                        </button>
+                        <span className="w-6 text-center">{slot.capacity}</span>
+                        <button
+                          onClick={() => handleAdjustCapacity(slot.id, slot.capacity, 5)}
+                          className="w-5 h-5 rounded-md bg-white border border-stone-200 text-stone-700 flex items-center justify-center hover:bg-stone-100"
+                          title="Increase Capacity (+5)"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ))}
 
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-stone-50 border border-stone-100">
-                    <span>12:40 PM - 12:50 PM</span>
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <button
-                        onClick={() => setSlotCapacities(c => ({ ...c, slot2: Math.max(5, c.slot2 - 5) }))}
-                        className="w-5 h-5 rounded-md bg-white border border-stone-200 text-stone-700 flex items-center justify-center"
-                      >
-                        -
-                      </button>
-                      <span className="w-6 text-center">{slotCapacities.slot2}</span>
-                      <button
-                        onClick={() => setSlotCapacities(c => ({ ...c, slot2: c.slot2 + 5 }))}
-                        className="w-5 h-5 rounded-md bg-white border border-stone-200 text-stone-700 flex items-center justify-center"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => setIsAddSlotModalOpen(true)}
+                    className="w-full py-1.5 rounded-xl border border-dashed border-stone-300 hover:border-stone-400 text-stone-600 text-[10px] font-bold flex items-center justify-center gap-1 mt-1 transition-colors"
+                  >
+                    <Plus size={11} /> Add New Slot
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Devices & Terminals (Crextio MacBook Air equivalent) */}
+            {/* Devices & Kitchen Hardware */}
             <div>
               <button
                 onClick={() => setExpandedSection(expandedSection === 'devices' ? null : 'devices')}
@@ -744,6 +958,7 @@ export default function Overview() {
 
               {expandedSection === 'devices' && (
                 <div className="mt-2.5 space-y-1.5 text-xs text-stone-600">
+                  {/* Phone */}
                   <div className="p-2 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Smartphone size={14} className="text-stone-500" />
@@ -752,9 +967,17 @@ export default function Overview() {
                         <p className="text-[9px] text-stone-400">Nothing Phone (Connected)</p>
                       </div>
                     </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <button
+                      onClick={() => {
+                        setDeviceStatuses(p => ({ ...p, dev1: !p.dev1 }));
+                        setDeviceToast(`Baker Phone set to ${!deviceStatuses.dev1 ? 'Online 🟢' : 'Standby 🟡'}`);
+                      }}
+                      className={`w-2.5 h-2.5 rounded-full transition-colors ${deviceStatuses.dev1 ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                      title="Toggle Connection"
+                    />
                   </div>
 
+                  {/* Printer */}
                   <div className="p-2 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Printer size={14} className="text-stone-500" />
@@ -763,18 +986,32 @@ export default function Overview() {
                         <p className="text-[9px] text-stone-400">Epson TM-T82 (Ready)</p>
                       </div>
                     </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <button
+                      onClick={() => setDeviceToast('🖨️ Test Receipt Sent: Order #2000 - Samosa x2 - ₹50 printed!')}
+                      className="px-2 py-0.5 rounded-full bg-white border border-stone-200 text-[9px] font-bold text-stone-700 hover:bg-stone-100"
+                    >
+                      Test
+                    </button>
                   </div>
 
+                  {/* Audio */}
                   <div className="p-2 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Volume2 size={14} className="text-stone-500" />
                       <div>
                         <p className="font-bold text-[11px] text-stone-900">Counter Audio Chime</p>
-                        <p className="text-[9px] text-stone-400">Audio notifications active</p>
+                        <p className="text-[9px] text-stone-400">Web audio alerts active</p>
                       </div>
                     </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <button
+                      onClick={() => {
+                        playChime();
+                        setDeviceToast('🔊 Audio Chime Tested Successfully!');
+                      }}
+                      className="px-2 py-0.5 rounded-full bg-white border border-stone-200 text-[9px] font-bold text-stone-700 hover:bg-stone-100"
+                    >
+                      Ping
+                    </button>
                   </div>
                 </div>
               )}
@@ -786,7 +1023,7 @@ export default function Overview() {
         <div className="lg:col-span-6 space-y-5">
           {/* Top Row: Progress Bar Chart & Time Tracker Gauge */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Card C: Progress / Order Velocity Bar Chart (Crextio Progress equivalent) */}
+            {/* Card C: Order Velocity Bar Chart (Real dynamic orders) */}
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -803,48 +1040,48 @@ export default function Overview() {
 
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-3xl font-normal tracking-tight text-stone-900">
-                    {activeQueue * 3 + 12}
+                    {velocityPerHour}
                   </span>
                   <span className="text-xs text-stone-400 font-medium">Orders / hour</span>
                 </div>
               </div>
 
-              {/* Minimalist Bar Chart (matching Crextio Screenshot S M T W T F S) */}
+              {/* Dynamic Bar Chart Sunday-Saturday */}
               <div className="mt-6 pt-2">
                 <div className="flex items-end justify-between h-28 gap-2 relative">
                   {/* Floating Rush Tag on active peak bar */}
-                  <div className="absolute top-0 right-10 bg-[#FACC15] text-stone-950 font-extrabold text-[9px] px-2 py-0.5 rounded-full shadow-xs animate-bounce">
-                    12:30 Rush
+                  <div
+                    className="absolute -top-3 bg-[#FACC15] text-stone-950 font-extrabold text-[9px] px-2 py-0.5 rounded-full shadow-xs"
+                    style={{ left: `${(peakDayIdx / 7) * 100}%` }}
+                  >
+                    Peak {weeklyCounts[peakDayIdx]}
                   </div>
 
-                  {/* Day/Hour bars */}
-                  {[
-                    { label: 'S', h: 'h-10', dot: true },
-                    { label: 'M', h: 'h-16', dot: false },
-                    { label: 'T', h: 'h-12', dot: false },
-                    { label: 'W', h: 'h-18', dot: false },
-                    { label: 'T', h: 'h-24', highlight: true }, // Peak
-                    { label: 'F', h: 'h-14', dot: false },
-                    { label: 'S', h: 'h-8', dot: true },
-                  ].map((bar, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                      <div className="w-full flex justify-center">
-                        <div
-                          className={`w-3.5 rounded-full transition-all duration-300 ${
-                            bar.highlight
-                              ? 'bg-[#FACC15] shadow-sm'
-                              : 'bg-stone-900 hover:bg-stone-700'
-                          } ${bar.h}`}
-                        />
+                  {weeklyDayLabels.map((label, idx) => {
+                    const count = weeklyCounts[idx];
+                    const isPeak = idx === peakDayIdx;
+                    const heightPercent = Math.max(16, Math.round((count / maxWeeklyCount) * 100));
+
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                        <div className="w-full flex justify-center items-end h-20">
+                          <div
+                            style={{ height: `${heightPercent}%` }}
+                            className={`w-3.5 rounded-full transition-all duration-300 ${
+                              isPeak ? 'bg-[#FACC15] shadow-sm' : 'bg-stone-900 hover:bg-stone-700'
+                            }`}
+                            title={`${label}: ${count} orders`}
+                          />
+                        </div>
+                        <span className="text-[10px] font-bold text-stone-400">{label}</span>
                       </div>
-                      <span className="text-[10px] font-bold text-stone-400">{bar.label}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>
 
-            {/* Card D: Time Tracker (Circular Dial Gauge with Working Ticking Controls) */}
+            {/* Card D: Kitchen Rush Time Tracker Dial */}
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -929,96 +1166,170 @@ export default function Overview() {
                   </button>
                 </div>
 
-                {/* Quick Preset Pills */}
-                <div className="flex items-center gap-1.5 text-[9px] font-bold text-stone-500">
+                {/* Quick Preset Pills (Dynamic Active State) */}
+                <div className="flex items-center gap-1.5 text-[9px] font-bold">
+                  {[
+                    { label: '2m', secs: 120 },
+                    { label: '2:35', secs: 155 },
+                    { label: '5m', secs: 300 },
+                  ].map(p => (
+                    <button
+                      key={p.label}
+                      onClick={() => setTimerPreset(p.secs)}
+                      className={`px-2 py-0.5 rounded-full transition-all ${
+                        timerInitialSeconds === p.secs
+                          ? 'bg-[#FACC15] text-stone-950 font-black shadow-xs'
+                          : 'bg-stone-100 hover:bg-stone-200 text-stone-600'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
                   <button
-                    onClick={() => setTimerPreset(120)}
-                    className="px-2 py-0.5 rounded-full bg-stone-100 hover:bg-stone-200"
+                    onClick={() => setTimerSeconds(s => Math.max(10, s - 30))}
+                    className="px-1.5 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-500"
+                    title="Decrease 30s"
                   >
-                    2m
+                    -30s
                   </button>
                   <button
-                    onClick={() => setTimerPreset(155)}
-                    className="px-2 py-0.5 rounded-full bg-[#FACC15] text-stone-950 font-black"
+                    onClick={() => setTimerSeconds(s => s + 30)}
+                    className="px-1.5 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-500"
+                    title="Increase 30s"
                   >
-                    2:35
-                  </button>
-                  <button
-                    onClick={() => setTimerPreset(300)}
-                    className="px-2 py-0.5 rounded-full bg-stone-100 hover:bg-stone-200"
-                  >
-                    5m
+                    +30s
                   </button>
                 </div>
               </div>
             </motion.div>
           </div>
 
-          {/* Card E: Live Schedule & Dispatch Matrix (Crextio Bottom Calendar Strip) */}
+          {/* Card E: Live Schedule & Dispatch Matrix (Real Dynamic Firestore Data) */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25 }}
             className="bg-white rounded-[30px] p-6 border border-[#E9DFCB] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)]"
           >
-            {/* Month Strip */}
+            {/* Dynamic Month Strip with Working Navigation */}
             <div className="flex items-center justify-between text-xs font-bold text-stone-400 border-b border-stone-100 pb-3">
-              <span className="text-stone-400">October</span>
-              <span className="text-stone-900 font-extrabold">November 2026</span>
-              <span className="text-stone-400">December</span>
-            </div>
+              <button
+                onClick={handlePrevMonth}
+                className="flex items-center gap-1 text-stone-500 hover:text-stone-900 px-2 py-1 rounded-lg hover:bg-stone-50 transition-colors"
+              >
+                <ChevronLeft size={13} />
+                <span>{getMonthName(selectedMonthDate, -1)}</span>
+              </button>
 
-            {/* Clickable Days Row */}
-            <div className="grid grid-cols-6 gap-2 text-center text-xs font-bold py-3 border-b border-stone-100">
-              {scheduleDays.map((day, idx) => (
+              <div className="flex items-center gap-2">
+                <Calendar size={13} className="text-[#EAB308]" />
+                <span className="text-stone-900 font-extrabold text-sm">
+                  {getFullMonthYear(selectedMonthDate)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
                 <button
-                  key={idx}
-                  onClick={() => setSelectedDayIndex(idx)}
-                  className={`py-1 rounded-xl transition-all ${
-                    selectedDayIndex === idx
-                      ? 'bg-[#18181B] text-white shadow-xs'
-                      : 'text-stone-400 hover:text-stone-700'
-                  }`}
+                  onClick={handleNextMonth}
+                  className="flex items-center gap-1 text-stone-500 hover:text-stone-900 px-2 py-1 rounded-lg hover:bg-stone-50 transition-colors"
                 >
-                  {day.label}
+                  <span>{getMonthName(selectedMonthDate, 1)}</span>
+                  <ChevronRight size={13} />
                 </button>
-              ))}
+
+                <button
+                  onClick={() => setIsAddSlotModalOpen(true)}
+                  className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#18181B] hover:bg-black text-[#FACC15] text-[10px] font-bold shadow-xs transition-transform hover:scale-105"
+                >
+                  <Plus size={11} /> Add Slot
+                </button>
+              </div>
             </div>
 
-            {/* Time Slot Dispatch Blocks */}
-            <div className="mt-4 space-y-3">
-              <div className="flex items-start gap-4 text-xs">
-                <span className="text-stone-400 w-16 pt-1 font-semibold">11:30 am</span>
-                <div className="flex-1 p-3 rounded-2xl bg-[#18181B] text-white flex items-center justify-between shadow-xs">
-                  <div>
-                    <p className="font-bold text-xs">Breakfast & Beverage Rush</p>
-                    <p className="text-[10px] text-stone-400">Nescafe & Juice Bar Peak (38 orders)</p>
-                  </div>
-                  <div className="flex -space-x-1.5">
-                    <div className="w-5 h-5 rounded-full bg-amber-400 text-stone-950 text-[9px] font-black flex items-center justify-center">N</div>
-                    <div className="w-5 h-5 rounded-full bg-emerald-400 text-stone-950 text-[9px] font-black flex items-center justify-center">C</div>
-                  </div>
-                </div>
-              </div>
+            {/* Clickable Days Row (Dynamic Current Week) */}
+            <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-bold py-3 border-b border-stone-100">
+              {currentWeekDays.map((day, idx) => {
+                const isSelected = selectedDateStr === day.dateStr;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedDateStr(day.dateStr)}
+                    className={`py-1.5 rounded-xl transition-all relative ${
+                      isSelected
+                        ? 'bg-[#18181B] text-white shadow-xs'
+                        : 'text-stone-500 hover:text-stone-900 hover:bg-stone-50'
+                    }`}
+                  >
+                    <span>{day.label}</span>
+                    {day.isToday && !isSelected && (
+                      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#EAB308]" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-              <div className="flex items-start gap-4 text-xs">
-                <span className="text-stone-400 w-16 pt-1 font-semibold">12:30 pm</span>
-                <div className="flex-1 p-3 rounded-2xl bg-[#FAF6EE] border border-[#E7DFCE] text-stone-900 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-xs">Lunch Pre-Order Dispatch Window</p>
-                    <p className="text-[10px] text-stone-500">Main Campus Canteen · Slot Capacity {slotCapacities.slot1}/{slotCapacities.slot1}</p>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-[#FACC15] text-[10px] font-extrabold text-stone-950 animate-pulse">
-                    Live Now
-                  </span>
+            {/* Real Dynamic Time Slot Dispatch Blocks */}
+            <div className="mt-4 space-y-3">
+              {timeSlots.length === 0 ? (
+                <div className="p-8 text-center text-stone-400">
+                  <p className="text-xs font-bold text-stone-600">No dispatch windows configured.</p>
+                  <button
+                    onClick={() => setIsAddSlotModalOpen(true)}
+                    className="mt-2 text-xs font-bold text-amber-700 underline"
+                  >
+                    + Provision Pickup Slot
+                  </button>
                 </div>
-              </div>
+              ) : (
+                timeSlots.map(slot => {
+                  const status = getSlotStatus(slot);
+                  const isLive = status === 'live';
+
+                  return (
+                    <div key={slot.id} className="flex items-start gap-4 text-xs">
+                      <span className="text-stone-400 w-16 pt-2 font-semibold">
+                        {slot.startTime || slot.window.split(' ')[0]}
+                      </span>
+
+                      <div
+                        onClick={() => setSelectedSlotForModal(slot)}
+                        className={`flex-1 p-3.5 rounded-2xl cursor-pointer transition-all border ${
+                          isLive
+                            ? 'bg-[#FAF6EE] border-[#E7DFCE] text-stone-900 hover:shadow-sm'
+                            : 'bg-[#18181B] border-stone-800 text-white hover:bg-black'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-bold text-xs">{slot.label}</p>
+                            <p className={`text-[10px] mt-0.5 ${isLive ? 'text-stone-500' : 'text-stone-400'}`}>
+                              {slot.outletName || 'Main Campus Canteen'} • Slot Capacity {slot.currentOrders || 0}/{slot.capacity}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isLive ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-[#FACC15] text-[10px] font-extrabold text-stone-950 animate-pulse">
+                                Live Now
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-stone-800 text-[10px] font-bold text-stone-400">
+                                {status === 'closed' ? 'Passed' : 'Upcoming'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </motion.div>
         </div>
 
         {/* ── RIGHT COLUMN (SPAN 3) ── */}
-        {/* Card F: Approvals Desk & Onboarding Tasks (Tall Dark Charcoal Bento Card) */}
         <div className="lg:col-span-3">
           <motion.div
             initial={{ opacity: 0, y: 15 }}
@@ -1035,16 +1346,16 @@ export default function Overview() {
                 </div>
                 <div className="text-right">
                   <span className="text-xl font-normal text-[#FACC15] font-mono">
-                    {pendingTickets.length}/8
+                    {pendingTickets.length}
                   </span>
                 </div>
               </div>
 
-              {/* Multi-segment Ratio Bar inside Dark Card (matching Crextio Onboarding 18%) */}
+              {/* Segmented Ratio Bar */}
               <div className="my-3 flex gap-1.5 h-2">
-                <div className="w-[30%] bg-[#FACC15] rounded-full" />
+                <div className="w-[35%] bg-[#FACC15] rounded-full" />
                 <div className="w-[25%] bg-stone-700 rounded-full" />
-                <div className="w-[45%] bg-stone-800 rounded-full" />
+                <div className="w-[40%] bg-stone-800 rounded-full" />
               </div>
 
               {/* Action Ribbon: Approve All */}
@@ -1090,7 +1401,6 @@ export default function Overview() {
                         </div>
                       </div>
 
-                      {/* Dual Action Buttons: Quick Approve & Quick Reject */}
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={() => setRejectingTicket(ticket)}
@@ -1127,6 +1437,220 @@ export default function Overview() {
         </div>
 
       </div>
+
+      {/* ─── MODAL: SLOT DETAILS & CAPACITY MANAGEMENT ─── */}
+      <AnimatePresence>
+        {selectedSlotForModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-white rounded-[32px] p-6 shadow-2xl border border-[#E9DFCB] space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">{selectedSlotForModal.label}</h3>
+                  <p className="text-xs text-stone-500">{selectedSlotForModal.window} • {selectedSlotForModal.outletName || 'Outlet 2000'}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedSlotForModal(null)}
+                  className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Slot Capacity Control */}
+              <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-stone-900">Slot Pre-Order Capacity</p>
+                  <p className="text-[10px] text-stone-500">Max concurrent orders accepted</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleAdjustCapacity(selectedSlotForModal.id, selectedSlotForModal.capacity, -5)}
+                    className="w-8 h-8 rounded-full bg-white border border-stone-200 text-stone-900 font-bold flex items-center justify-center hover:bg-stone-100"
+                  >
+                    -
+                  </button>
+                  <span className="w-8 text-center font-bold text-base text-stone-900">
+                    {selectedSlotForModal.capacity}
+                  </span>
+                  <button
+                    onClick={() => handleAdjustCapacity(selectedSlotForModal.id, selectedSlotForModal.capacity, 5)}
+                    className="w-8 h-8 rounded-full bg-white border border-stone-200 text-stone-900 font-bold flex items-center justify-center hover:bg-stone-100"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Scheduled Orders for this slot */}
+              <div>
+                <p className="text-xs font-bold text-stone-700 mb-2">Orders Booked in Window</p>
+                <div className="max-h-48 overflow-y-auto space-y-2">
+                  {rawOrders.filter(o => o.pickupSlot === selectedSlotForModal.window).length === 0 ? (
+                    <div className="p-4 bg-stone-50 rounded-xl text-center text-xs text-stone-400">
+                      No orders currently queued for this dispatch slot.
+                    </div>
+                  ) : (
+                    rawOrders
+                      .filter(o => o.pickupSlot === selectedSlotForModal.window)
+                      .map(o => (
+                        <div key={o.id} className="p-2.5 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-mono font-bold text-stone-900">TOKEN #{o.token || o.id.slice(0, 5)}</span>
+                            <p className="text-[10px] text-stone-500">{o.customerName || 'Customer'} • ₹{o.totalAmount}</p>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                            {o.status}
+                          </span>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSlot(selectedSlotForModal.id)}
+                  className="px-3 py-2 text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1"
+                >
+                  <Trash2 size={13} /> Delete Slot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlotForModal(null)}
+                  className="px-5 py-2 rounded-full bg-[#18181B] text-[#FACC15] text-xs font-bold shadow-xs hover:bg-black"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: ADD PICKUP SLOT ─── */}
+      <AnimatePresence>
+        {isAddSlotModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-white rounded-[32px] p-6 shadow-2xl border border-[#E9DFCB] space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">Add Dispatch Slot</h3>
+                  <p className="text-xs text-stone-500">Create operational pre-order pickup window</p>
+                </div>
+                <button
+                  onClick={() => setIsAddSlotModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddSlotSubmit} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Time Window (Display)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 01:15 PM - 01:30 PM"
+                    value={newSlotWindow}
+                    onChange={e => setNewSlotWindow(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:border-stone-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Slot Label</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Afternoon Wave 3"
+                    value={newSlotLabel}
+                    onChange={e => setNewSlotLabel(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:border-stone-800"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">Start Time (24h)</label>
+                    <input
+                      type="text"
+                      placeholder="13:15"
+                      value={newSlotStartTime}
+                      onChange={e => setNewSlotStartTime(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">End Time (24h)</label>
+                    <input
+                      type="text"
+                      placeholder="13:30"
+                      value={newSlotEndTime}
+                      onChange={e => setNewSlotEndTime(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">Max Capacity</label>
+                    <input
+                      type="number"
+                      required
+                      min={5}
+                      value={newSlotCapacity}
+                      onChange={e => setNewSlotCapacity(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">Assign Stall</label>
+                    <select
+                      value={newSlotOutletId}
+                      onChange={e => setNewSlotOutletId(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900"
+                    >
+                      {outlets.map(o => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddSlotModalOpen(false)}
+                    className="flex-1 py-2.5 rounded-full border border-stone-300 text-xs font-bold text-stone-700 hover:bg-stone-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingSlot}
+                    className="flex-1 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-[#FACC15] text-xs font-bold shadow-xs transition-transform hover:scale-105 disabled:opacity-50"
+                  >
+                    {isSubmittingSlot ? 'Saving...' : 'Add Slot'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ─── ADD STALL MODAL ─── */}
       <AnimatePresence>
@@ -1180,10 +1704,10 @@ export default function Overview() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. vendor@upi"
+                    placeholder="e.g. 7310347742@nyes"
                     value={newOutletUpi}
                     onChange={e => setNewOutletUpi(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:border-stone-800"
+                    className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 font-mono focus:outline-none focus:border-stone-800"
                   />
                 </div>
 
@@ -1191,7 +1715,7 @@ export default function Overview() {
                   <label className="block text-xs font-bold text-stone-700 mb-1">Est. Default Prep Time</label>
                   <input
                     type="text"
-                    placeholder="e.g. 5-8 mins"
+                    placeholder="e.g. 2-5 mins"
                     value={newOutletWait}
                     onChange={e => setNewOutletWait(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:border-stone-800"
