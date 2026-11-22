@@ -358,13 +358,19 @@ class FirebaseService {
   static Stream<List<Map<String, dynamic>>> streamMenuItems(String outletId) {
     if (outletId.trim().isEmpty) return const Stream.empty();
     return _db.collection('menu_items').snapshots().map((snap) {
-      final items = snap.docs
-          .map((d) => {'id': d.id, ...d.data()})
-          .where((d) =>
-              d['outletId'] == outletId &&
-              d['approvalStatus'] != 'pending' &&
-              d['approvalStatus'] != 'rejected')
-          .toList();
+      final seenIds = <String>{};
+      final items = <Map<String, dynamic>>[];
+      for (final d in snap.docs) {
+        final data = d.data();
+        if (data['outletId'] == outletId &&
+            data['approvalStatus'] != 'pending' &&
+            data['approvalStatus'] != 'rejected') {
+          if (!seenIds.contains(d.id)) {
+            seenIds.add(d.id);
+            items.add({'id': d.id, ...data});
+          }
+        }
+      }
       return items;
     });
   }
@@ -498,8 +504,11 @@ class FirebaseService {
   static Future<void> updateMenuItem(
       String outletId, String itemId, Map<String, dynamic> data) async {
     try {
-      await _db.collection('menu_items').doc(itemId).update(data);
-    } catch (_) {}
+      await _db.collection('menu_items').doc(itemId).set(data, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating menu_items/$itemId: $e');
+      rethrow;
+    }
 
     if (outletId.isNotEmpty) {
       try {
@@ -508,7 +517,7 @@ class FirebaseService {
             .doc(outletId)
             .collection('menu_items')
             .doc(itemId)
-            .update(data);
+            .set(data, SetOptions(merge: true));
       } catch (_) {}
     }
   }

@@ -33,7 +33,6 @@ class _BakerQueueScreenState extends State<BakerQueueScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     final rawOutletId = context.watch<UserProvider>().managedOutletId;
     final outletId = (rawOutletId != null && rawOutletId.trim().isNotEmpty) ? rawOutletId.trim() : null;
-    const outletName = 'MY OUTLET';
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -42,49 +41,59 @@ class _BakerQueueScreenState extends State<BakerQueueScreen> with SingleTickerPr
         child: Column(
           children: [
             // Top Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
-              color: AppTheme.darkHdr,
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
+            StreamBuilder<Map<String, dynamic>?>(
+              stream: outletId != null ? FirebaseService.streamOutlet(outletId) : const Stream.empty(),
+              builder: (context, outletSnap) {
+                final outletData = outletSnap.data;
+                final dynamicOutletName = outletData?['name'] as String? ?? (outletId != null ? 'OUTLET $outletId' : 'MY OUTLET');
+                final isOutletOpen = outletData?['isOpen'] as bool? ?? _shiftActive;
+
+                return Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                  color: AppTheme.darkHdr,
+                  child: Column(
                     children: [
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(outletName, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary, letterSpacing: 1.2)),
-                            SizedBox(height: 4),
-                            Text('Order Management', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white), overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() => _shiftActive = !_shiftActive);
-                          if (outletId != null) {
-                            FirebaseService.updateOutlet(outletId, {'isOpen': _shiftActive});
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(999)),
-                          child: Row(
-                            children: [
-                              Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: _shiftActive ? AppTheme.green : AppTheme.red)),
-                              const SizedBox(width: 6),
-                              Text(_shiftActive ? 'Active' : 'Offline', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-                            ],
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(dynamicOutletName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary, letterSpacing: 1.2)),
+                                const SizedBox(height: 4),
+                                const Text('Order Management', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white), overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: () {
+                              final nextState = !isOutletOpen;
+                              setState(() => _shiftActive = nextState);
+                              if (outletId != null) {
+                                FirebaseService.updateOutlet(outletId, {'isOpen': nextState});
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(999)),
+                              child: Row(
+                                children: [
+                                  Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: isOutletOpen ? AppTheme.green : AppTheme.red)),
+                                  const SizedBox(width: 6),
+                                  Text(isOutletOpen ? 'Active' : 'Offline', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
 
             if (outletId != null) ...[

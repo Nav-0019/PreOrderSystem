@@ -23,43 +23,51 @@ class BakerInventoryScreen extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              color: AppTheme.darkHdr,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('MY OUTLET', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary, letterSpacing: 1.2)),
-                        SizedBox(height: 4),
-                        Text('Menu & Inventory', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white), overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Material(
-                    color: outletId != null ? AppTheme.primary : Colors.white24,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () {
-                        if (outletId == null) {
-                          _showCreateOutletDialog(context);
-                        } else {
-                          _showAddItemDialog(context, outletId);
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        child: Text('+ Add Item', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+            StreamBuilder<Map<String, dynamic>?>(
+              stream: outletId != null ? FirebaseService.streamOutlet(outletId) : const Stream.empty(),
+              builder: (context, outletSnap) {
+                final outletData = outletSnap.data;
+                final dynamicOutletName = outletData?['name'] as String? ?? (outletId != null ? 'OUTLET $outletId' : 'MY OUTLET');
+
+                return Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                  color: AppTheme.darkHdr,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(dynamicOutletName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary, letterSpacing: 1.2)),
+                            const SizedBox(height: 4),
+                            const Text('Menu & Inventory', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white), overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Material(
+                        color: outletId != null ? AppTheme.primary : Colors.white24,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: () {
+                            if (outletId == null) {
+                              _showCreateOutletDialog(context);
+                            } else {
+                              _showAddItemDialog(context, outletId);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            child: Text('+ Add Item', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
 
             Expanded(
@@ -461,11 +469,6 @@ class _AddItemSheetState extends State<_AddItemSheet> {
         itemData: itemData,
       );
 
-      // 2. Also attempt direct addition if user has direct write role
-      try {
-        await FirebaseService.addMenuItem(widget.outletId, itemData);
-      } catch (_) {}
-
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -692,21 +695,28 @@ class _EditItemSheetState extends State<_EditItemSheet> {
     }
     setState(() => _isLoading = true);
     try {
+      final newPrice = double.tryParse(_priceCtrl.text.trim()) ?? 0.0;
       final updateData = <String, dynamic>{
         'name': _nameCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
-        'price': double.tryParse(_priceCtrl.text.trim()) ?? 0.0,
+        'price': newPrice,
         'category': _category,
         'prepTime': int.tryParse(_prepCtrl.text.trim()) ?? 5,
       };
-      if (_photoBase64 != null) {
+      if (_photoBase64 != null && _photoBase64!.isNotEmpty) {
         updateData['photoBase64'] = _photoBase64;
-      } else {
-        updateData['photoBase64'] = FieldValue.delete();
       }
 
       await FirebaseService.updateMenuItem(widget.outletId, widget.item['id'], updateData);
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Updated "${_nameCtrl.text.trim()}" successfully! (₹${newPrice.toStringAsFixed(0)})'),
+            backgroundColor: AppTheme.primary,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating item: $e')));
