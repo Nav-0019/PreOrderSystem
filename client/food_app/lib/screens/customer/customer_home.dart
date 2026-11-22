@@ -19,6 +19,14 @@ class CustomerHome extends StatefulWidget {
 class _CustomerHomeState extends State<CustomerHome> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  String _selectedVendorCategory = 'All';
+  final List<String> _vendorCategories = [
+    'All',
+    'Canteen',
+    'Bakery & Snacks',
+    'Café & Drinks',
+    'Juice & Shakes',
+  ];
   List<Outlet> _outlets = [];
   bool _isLoading = true;
   late final Stream<List<Outlet>> _outletsStream;
@@ -49,10 +57,30 @@ class _CustomerHomeState extends State<CustomerHome> {
     return 'Good evening 👋';
   }
 
-  List<Outlet> get _filtered => _outlets.where((o) =>
-    _searchQuery.isEmpty ||
-    o.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-    o.tagline.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+  List<Outlet> get _filtered => _outlets.where((o) {
+    final matchesSearch = _searchQuery.isEmpty ||
+      o.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+      o.tagline.toLowerCase().contains(_searchQuery.toLowerCase());
+    
+    if (!matchesSearch) return false;
+    if (_selectedVendorCategory == 'All') return true;
+    
+    final nameLower = o.name.toLowerCase();
+    final tagLower = o.tagline.toLowerCase();
+    if (_selectedVendorCategory == 'Canteen') {
+      return nameLower.contains('canteen') || tagLower.contains('canteen') || nameLower.contains('2000');
+    }
+    if (_selectedVendorCategory == 'Bakery & Snacks') {
+      return nameLower.contains('bake') || tagLower.contains('bake') || nameLower.contains('snack') || tagLower.contains('puff');
+    }
+    if (_selectedVendorCategory == 'Café & Drinks') {
+      return nameLower.contains('nescafe') || tagLower.contains('coffee') || tagLower.contains('tea') || nameLower.contains('cafe');
+    }
+    if (_selectedVendorCategory == 'Juice & Shakes') {
+      return nameLower.contains('juice') || tagLower.contains('shake') || tagLower.contains('smoothie');
+    }
+    return true;
+  }).toList();
 
   String _calculateAvgWait(bool isPremium) {
     final openOutlets = _filtered.where((o) => o.isOpen).toList();
@@ -207,7 +235,50 @@ class _CustomerHomeState extends State<CustomerHome> {
                 ),
                 const SizedBox(height: 20),
 
-                Text('CAMPUS OUTLETS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
+                // Vendor Categories Filter Chips
+                SizedBox(
+                  height: 36,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _vendorCategories.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, idx) {
+                      final cat = _vendorCategories[idx];
+                      final isSelected = _selectedVendorCategory == cat;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedVendorCategory = cat),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppTheme.primary : theme.cardColor,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: isSelected ? AppTheme.primary : theme.dividerColor,
+                            ),
+                          ),
+                          child: Text(
+                            cat,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isSelected ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('CAMPUS STALLS & VENDORS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
+                    Text('${_filtered.length} found', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+                  ],
+                ),
                 const SizedBox(height: 10),
 
                 ..._filtered.map((outlet) => _OutletCard(outlet: outlet, isPremium: user.isPremium)),

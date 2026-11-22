@@ -37,6 +37,7 @@ class _CartScreenState extends State<CartScreen> {
                     'name': i.name,
                     'quantity': i.quantity,
                     'price': i.price,
+                    'category': i.category,
                   })
               .toList(),
         ),
@@ -112,6 +113,59 @@ class _CartScreenState extends State<CartScreen> {
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
                       children: [
+                        // Vendor / Stall Header Banner
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: theme.cardColor,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppTheme.primaryBdr),
+                            boxShadow: [
+                              BoxShadow(color: AppTheme.primary.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryBg,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.storefront, color: AppTheme.primary, size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      cart.currentOutletName ?? 'Campus Canteen 2000',
+                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Order prepared at this stall counter',
+                                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.55)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Text('Direct Stall Order', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF166534))),
+                              ),
+                            ],
+                          ),
+                        ),
+
                         // Premium priority banner
                         if (isPremium)
                           Container(
@@ -134,7 +188,7 @@ class _CartScreenState extends State<CartScreen> {
                             ),
                           ),
 
-                        // Cart items
+                        // Cart items (Categorized)
                         Container(
                           decoration: BoxDecoration(
                             color: theme.cardColor,
@@ -151,10 +205,30 @@ class _CartScreenState extends State<CartScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.primaryBg,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  item.category,
+                                                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.primary),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                           const SizedBox(height: 4),
-                                          Text('₹${item.price.toStringAsFixed(0)}',
-                                              style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                                          Text('₹${item.price.toStringAsFixed(0)} each',
+                                              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                                          Text('₹${(item.price * item.quantity).toStringAsFixed(0)}',
+                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.primary)),
                                         ],
                                       ),
                                     ),
@@ -170,7 +244,14 @@ class _CartScreenState extends State<CartScreen> {
                                           Text('${item.quantity}',
                                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
                                           GestureDetector(
-                                            onTap: () => cart.addItem(item.id, item.name, item.price),
+                                            onTap: () => cart.addItem(
+                                              item.id,
+                                              item.name,
+                                              item.price,
+                                              category: item.category,
+                                              outletId: item.outletId,
+                                              outletName: item.outletName,
+                                            ),
                                             child: const SizedBox(width: 36, height: 36, child: Icon(Icons.add, color: Colors.white, size: 16)),
                                           ),
                                         ],
@@ -203,7 +284,7 @@ class _CartScreenState extends State<CartScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(color: AppTheme.primaryBg, borderRadius: BorderRadius.circular(999)),
-                                    child: Text(isPremium ? '⚡ Priority' : 'Capacity: 3/20',
+                                    child: Text(isPremium ? '⚡ Priority' : 'Capacity: Open',
                                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: isPremium ? AppTheme.goldDark : AppTheme.primary)),
                                   ),
                                 ],
@@ -374,7 +455,7 @@ class _CartScreenState extends State<CartScreen> {
           const SizedBox(height: 12),
           const Text('Cart is empty', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 6),
-          Text('Add items from the menu', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+          Text('Add items from any campus stall menu', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.5))),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
@@ -383,7 +464,7 @@ class _CartScreenState extends State<CartScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: const Text('Go to Menu', style: TextStyle(fontWeight: FontWeight.w700)),
+            child: const Text('Browse Stalls', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
       ),

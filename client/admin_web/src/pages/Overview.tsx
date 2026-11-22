@@ -800,15 +800,15 @@ export default function Overview() {
               </div>
 
               {/* Circular Dial Visual with dynamic stroke */}
-              <div className="my-2 flex items-center justify-center">
-                <div className="relative w-32 h-32 flex items-center justify-center">
+              <div className="my-2 flex flex-col items-center justify-center">
+                <div className="relative w-36 h-36 flex items-center justify-center">
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                     <circle
                       cx="50"
                       cy="50"
                       r="40"
                       stroke="#F4EEDC"
-                      strokeWidth="6"
+                      strokeWidth="5"
                       strokeDasharray="4 4"
                       fill="transparent"
                     />
@@ -817,7 +817,7 @@ export default function Overview() {
                       cy="50"
                       r="40"
                       stroke="#FACC15"
-                      strokeWidth="6"
+                      strokeWidth="5.5"
                       strokeLinecap="round"
                       strokeDasharray="251.2"
                       strokeDashoffset={251.2 - (251.2 * (timerSeconds / timerInitialSeconds))}
@@ -827,14 +827,20 @@ export default function Overview() {
                   </svg>
 
                   {/* Center Time Value */}
-                  <div className="absolute text-center">
-                    <p className="text-xl font-bold tracking-tight text-stone-900 leading-none font-mono">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-black tracking-tight text-stone-900 leading-none font-mono">
                       {formatTimer(timerSeconds)}
-                    </p>
-                    <p className="text-[10px] text-stone-400 font-semibold mt-1">
-                      Work Time · ~{avgWaitMinutes}m wait
-                    </p>
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-bold mt-1.5 tracking-wider uppercase">
+                      Work Time
+                    </span>
                   </div>
+                </div>
+
+                <div className="mt-1">
+                  <span className="text-[10px] font-bold text-stone-500 bg-stone-50 px-2.5 py-0.5 rounded-full border border-stone-200/60">
+                    ~{avgWaitMinutes}m avg wait
+                  </span>
                 </div>
               </div>
 
