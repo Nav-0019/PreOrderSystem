@@ -486,18 +486,9 @@ class FirebaseService {
       String outletId, String itemId, bool isAvailable) async {
     if (itemId.trim().isEmpty) return;
     try {
-      await _db.collection('menu_items').doc(itemId).update({'isAvailable': isAvailable});
-    } catch (_) {}
-
-    if (outletId.isNotEmpty) {
-      try {
-        await _db
-            .collection('outlets')
-            .doc(outletId)
-            .collection('menu_items')
-            .doc(itemId)
-            .update({'isAvailable': isAvailable});
-      } catch (_) {}
+      await _db.collection('menu_items').doc(itemId).set({'isAvailable': isAvailable}, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating availability: $e');
     }
   }
 
@@ -509,33 +500,13 @@ class FirebaseService {
       debugPrint('Error updating menu_items/$itemId: $e');
       rethrow;
     }
-
-    if (outletId.isNotEmpty) {
-      try {
-        await _db
-            .collection('outlets')
-            .doc(outletId)
-            .collection('menu_items')
-            .doc(itemId)
-            .set(data, SetOptions(merge: true));
-      } catch (_) {}
-    }
   }
 
   static Future<void> deleteMenuItem(String outletId, String itemId) async {
     try {
       await _db.collection('menu_items').doc(itemId).delete();
-    } catch (_) {}
-
-    if (outletId.isNotEmpty) {
-      try {
-        await _db
-            .collection('outlets')
-            .doc(outletId)
-            .collection('menu_items')
-            .doc(itemId)
-            .delete();
-      } catch (_) {}
+    } catch (e) {
+      debugPrint('Error deleting menu_items/$itemId: $e');
     }
   }
 
