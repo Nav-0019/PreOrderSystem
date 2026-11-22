@@ -30,7 +30,7 @@ class _SupportScreenState extends State<SupportScreen> {
     {
       'icon': Icons.payment,
       'q': 'What payment methods are accepted?',
-      'a': 'Currently only cash-on-pickup is supported. Digital payments are coming soon.',
+      'a': 'We support instant Scan & Pay using Shop UPI QR codes. You can pay with Google Pay, PhonePe, Paytm, or any UPI app.',
     },
     {
       'icon': Icons.star_outline,
@@ -63,20 +63,22 @@ class _SupportScreenState extends State<SupportScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 14),
-            color: theme.cardColor,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Help & Support', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
-                const SizedBox(height: 4),
-                Text('How can we help you today?', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+              color: theme.cardColor,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Help & Support', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                  const SizedBox(height: 4),
+                  Text('How can we help you today?', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
                     color: theme.scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(10),
@@ -171,6 +173,7 @@ class _SupportScreenState extends State<SupportScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

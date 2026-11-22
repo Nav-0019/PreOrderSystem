@@ -51,28 +51,40 @@ class _OtpScreenState extends State<OtpScreen> {
               children: [
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(28, 70, 28, 70),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppTheme.primary, AppTheme.primaryDark]),
                   ),
-                  child: Column(
-                    children: [
-                      const Text('Verify Email', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
-                      const SizedBox(height: 6),
-                      Text('Enter the 6-digit code sent to you', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.75))),
-                    ],
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 20, 28, 56),
+                      child: Column(
+                        children: [
+                          const Text('Verify Email', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
+                          const SizedBox(height: 6),
+                          Text('Enter the 6-digit code sent to you', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.75))),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 // Back button
                 Positioned(
-                  top: 50, left: 16,
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 34, height: 34,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.15)),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+                  top: 0,
+                  left: 16,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          width: 34, height: 34,
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.15)),
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -107,32 +119,36 @@ class _OtpScreenState extends State<OtpScreen> {
                   const Text('john@presidencyuniversity.in', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 28),
 
-                  // OTP boxes
+                  // OTP boxes (Flexible to adapt to any screen width)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: List.generate(6, (i) => SizedBox(
-                      width: 46, height: 56,
-                      child: TextField(
-                        controller: _controllers[i],
-                        focusNode: _focusNodes[i],
-                        textAlign: TextAlign.center,
-                        keyboardType: TextInputType.number,
-                        maxLength: 1,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                        decoration: InputDecoration(
-                          counterText: '',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: theme.dividerColor, width: 1.5),
+                    children: List.generate(6, (i) => Expanded(
+                      child: Container(
+                        height: 56,
+                        margin: EdgeInsets.symmetric(horizontal: i == 0 || i == 5 ? 2 : 3),
+                        child: TextField(
+                          controller: _controllers[i],
+                          focusNode: _focusNodes[i],
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          maxLength: 1,
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                          decoration: InputDecoration(
+                            contentPadding: EdgeInsets.zero,
+                            counterText: '',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: theme.dividerColor, width: 1.5),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+                            ),
+                            filled: true,
+                            fillColor: theme.scaffoldBackgroundColor,
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
-                          ),
-                          filled: true,
-                          fillColor: theme.scaffoldBackgroundColor,
+                          onChanged: (v) => _onOtpChanged(v, i),
                         ),
-                        onChanged: (v) => _onOtpChanged(v, i),
                       ),
                     )),
                   ),

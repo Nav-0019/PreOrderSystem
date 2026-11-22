@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../theme/app_theme.dart';
-import '../../models/app_data.dart';
 import '../../models/menu_item.dart';
 import '../../services/firebase_service.dart';
 import 'menu_screen.dart';
@@ -75,19 +74,20 @@ class _CustomerHomeState extends State<CustomerHome> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = context.watch<UserProvider>();
-    final cartCount = context.watch<CartProvider>().itemCount;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: Column(
-        children: [
-          // Header card
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 16),
-            color: theme.cardColor,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // Header card
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              color: theme.cardColor,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 Row(
                   children: [
                     Expanded(
@@ -218,6 +218,7 @@ class _CustomerHomeState extends State<CustomerHome> {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -313,13 +314,19 @@ class _CustomerHomeState extends State<CustomerHome> {
   Widget _statCard(String value, String label, ThemeData theme) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
         decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.dividerColor)),
         child: Column(
           children: [
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            ),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+            ),
           ],
         ),
       ),
@@ -370,19 +377,17 @@ class _OutletCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(outlet.tagline, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.5))),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
                       _chip(Icons.storefront, outlet.isOpen ? 'Open' : 'Closed', outlet.isOpen ? AppTheme.green : AppTheme.red),
-                      const SizedBox(width: 8),
-                      if (outlet.isOpen) _chip(Icons.timer, isPremium ? '~${_reducedWait(outlet.waitTime)}' : outlet.waitTime, isPremium ? AppTheme.gold : AppTheme.yellow),
-                      if (outlet.isOpen && isPremium) ...[
-                        const SizedBox(width: 8),
+                      if (outlet.isOpen)
+                        _chip(Icons.timer, isPremium ? '~${_reducedWait(outlet.waitTime)}' : outlet.waitTime, isPremium ? AppTheme.gold : AppTheme.yellow),
+                      if (outlet.isOpen && isPremium)
                         _chip(Icons.bolt, 'Priority', AppTheme.gold),
-                      ],
-                      if (outlet.isOpen && !isPremium) ...[
-                        const SizedBox(width: 8),
+                      if (outlet.isOpen && !isPremium)
                         _chip(Icons.people, '${outlet.queueCount}', theme.colorScheme.onSurface.withOpacity(0.5)),
-                      ],
                     ],
                   ),
                 ],

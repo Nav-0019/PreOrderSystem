@@ -8,39 +8,42 @@ class NotificationsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 16),
-            color: theme.cardColor,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(color: theme.scaffoldBackgroundColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: theme.dividerColor)),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.chevron_left, size: 20),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              color: theme.cardColor,
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(color: theme.scaffoldBackgroundColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: theme.dividerColor)),
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.chevron_left, size: 20),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              ],
+                  const SizedBox(width: 12),
+                  const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                ],
+              ),
             ),
-          ),
-          Divider(height: 1, color: theme.dividerColor),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                _notifItem(Icons.room_service, 'Order #44 is Ready!', 'Your Masala Maggi is at Counter No. 3', '2 min ago', theme),
-                _notifItem(Icons.timer, 'Queue Alert', 'Main Canteen queue dropped to 5. Good time to order!', '15 min ago', theme),
-                _notifItem(Icons.new_releases, 'New Item Added', 'Snack Corner added Cheese Burst Maggi today!', '1 hr ago', theme),
-              ],
+            Divider(height: 1, color: theme.dividerColor),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _notifItem(Icons.room_service, 'Order #44 is Ready!', 'Your Masala Maggi is at Counter No. 3', '2 min ago', theme),
+                  _notifItem(Icons.timer, 'Queue Alert', 'Main Canteen queue dropped to 5. Good time to order!', '15 min ago', theme),
+                  _notifItem(Icons.new_releases, 'New Item Added', 'Snack Corner added Cheese Burst Maggi today!', '1 hr ago', theme),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

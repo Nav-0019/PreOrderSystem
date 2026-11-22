@@ -120,6 +120,9 @@ class FirebaseService {
     required String outletName,
     required double totalAmount,
     required List<Map<String, dynamic>> items,
+    String paymentMethod = 'UPI_QR',
+    String paymentStatus = 'PAID',
+    String? transactionId,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -139,12 +142,21 @@ class FirebaseService {
         final newWaitTime = '${newQueue * 2}-${newQueue * 2 + 3} mins';
 
         // 2. Write order document
+        final pickupToken = orderRef.id.length >= 4
+            ? orderRef.id.substring(orderRef.id.length - 4).toUpperCase()
+            : '1001';
+
         transaction.set(orderRef, {
           'userId': user.uid,
+          'userName': user.displayName ?? 'Customer',
           'outletId': outletId,
           'outletName': outletName,
           'totalAmount': totalAmount,
           'status': 'pending',
+          'paymentMethod': paymentMethod,
+          'paymentStatus': paymentStatus,
+          'transactionId': transactionId ?? '',
+          'pickupToken': pickupToken,
           'createdAt': FieldValue.serverTimestamp(),
           'items': items.map((item) => {
             'menuItemId': item['id'],
@@ -266,6 +278,74 @@ class FirebaseService {
     }
   }
 
+  /// Cancel an order (customer can cancel if still pending)
+  static Future<bool> cancelOrder(String orderId) async {
+    try {
+      final orderRef = _db.collection('orders').doc(orderId);
+      await _db.runTransaction((transaction) async {
+        final orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists) return;
+        final data = orderSnap.data()!;
+        final status = data['status'] as String?;
+        final outletId = data['outletId'] as String?;
+        if (status != 'pending') return;
+
+        transaction.update(orderRef, {'status': 'cancelled'});
+
+        if (outletId != null) {
+          final outletRef = _db.collection('outlets').doc(outletId);
+          final outletSnap = await transaction.get(outletRef);
+          if (outletSnap.exists) {
+            final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
+            final newQueue = currentQueue > 0 ? currentQueue - 1 : 0;
+            final newWaitTime = newQueue == 0 ? 'No wait' : '${newQueue * 2}-${newQueue * 2 + 3} mins';
+            transaction.update(outletRef, {
+              'queueCount': newQueue,
+              'waitTime': newWaitTime,
+            });
+          }
+        }
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error cancelling order: $e');
+      return false;
+    }
+  }
+
+  /// Stream completed & cancelled past orders for an outlet (for manager history)
+  static Stream<List<Map<String, dynamic>>> streamOutletPastOrders(String outletId) {
+    if (outletId.trim().isEmpty) return const Stream.empty();
+    return _db
+        .collection('orders')
+        .where('outletId', isEqualTo: outletId)
+        .snapshots()
+        .map((snap) {
+          final docs = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+          final past = docs.where((d) {
+            final status = d['status'] as String? ?? '';
+            return ['completed', 'cancelled'].contains(status);
+          }).toList();
+          past.sort((a, b) {
+            final at = (a['createdAt'] as dynamic)?.millisecondsSinceEpoch ?? 0;
+            final bt = (b['createdAt'] as dynamic)?.millisecondsSinceEpoch ?? 0;
+            return bt.compareTo(at); // Newest first
+          });
+          return past;
+        });
+  }
+
+  /// Real-time stream of a single outlet's details (e.g. upiId, isOpen, waitTime)
+  static Stream<Map<String, dynamic>?> streamOutlet(String outletId) {
+    if (outletId.trim().isEmpty) return Stream.value(null);
+    return _db.collection('outlets').doc(outletId).snapshots().map((snap) {
+      if (snap.exists && snap.data() != null) {
+        return {'id': snap.id, ...snap.data()!};
+      }
+      return null;
+    });
+  }
+
   // ── Menu Management (admin) ───────────────────────────────
 
   /// Real-time stream of menu items for a given outlet.
@@ -275,6 +355,38 @@ class FirebaseService {
         .collection('outlets')
         .doc(outletId)
         .collection('menu_items')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => {'id': d.id, ...d.data()})
+            .toList());
+  }
+
+  /// Submit a menu item approval ticket for Administrator to confirm or reject.
+  static Future<String> submitMenuItemApprovalTicket({
+    required String outletId,
+    required String outletName,
+    required Map<String, dynamic> itemData,
+  }) async {
+    final user = _auth.currentUser;
+    final ticketRef = await _db.collection('approval_tickets').add({
+      'type': 'MENU_ITEM_ADD',
+      'status': 'pending',
+      'outletId': outletId,
+      'outletName': outletName,
+      'submittedByUid': user?.uid ?? '',
+      'submittedByName': user?.displayName ?? 'Outlet Manager',
+      'itemData': itemData,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return ticketRef.id;
+  }
+
+  /// Real-time stream of approval tickets for an outlet (to track pending, approved, rejected status)
+  static Stream<List<Map<String, dynamic>>> streamOutletApprovalTickets(String outletId) {
+    if (outletId.trim().isEmpty) return const Stream.empty();
+    return _db
+        .collection('approval_tickets')
+        .where('outletId', isEqualTo: outletId)
         .snapshots()
         .map((snap) => snap.docs
             .map((d) => {'id': d.id, ...d.data()})

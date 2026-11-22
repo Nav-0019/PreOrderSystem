@@ -44,15 +44,17 @@ class _BakerProfileScreenState extends State<BakerProfileScreen> {
     final user = context.watch<UserProvider>();
 
     return Scaffold(
-      body: Column(
-        children: [
-          // Header
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 24),
-            color: theme.cardColor,
-            child: Column(
-              children: [
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              color: theme.cardColor,
+              child: Column(
+                children: [
                 // Profile photo
                 GestureDetector(
                   onTap: _pickAndUploadPhoto,
@@ -130,7 +132,7 @@ class _BakerProfileScreenState extends State<BakerProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Text('ACCOUNT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
+                Text('ACCOUNT & SHOP SETUP', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.4), letterSpacing: 1.2)),
                 const SizedBox(height: 10),
                 Container(
                   decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.dividerColor)),
@@ -140,9 +142,18 @@ class _BakerProfileScreenState extends State<BakerProfileScreen> {
                       Divider(height: 1, color: theme.dividerColor),
                       _infoRow(
                         Icons.store_outlined, 
-                        'Outlet ID', 
-                        user.managedOutletId ?? '—', 
+                        'Assigned Outlet', 
+                        user.managedOutletId != null && user.managedOutletId!.isNotEmpty ? user.managedOutletId! : 'Not linked', 
                         theme,
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditBakerProfileScreen())),
+                      ),
+                      Divider(height: 1, color: theme.dividerColor),
+                      _infoRow(
+                        Icons.qr_code_2, 
+                        'Shop UPI & Payments', 
+                        'Configured in Shop Setup', 
+                        theme,
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditBakerProfileScreen())),
                       ),
                     ],
                   ),
@@ -169,6 +180,7 @@ class _BakerProfileScreenState extends State<BakerProfileScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

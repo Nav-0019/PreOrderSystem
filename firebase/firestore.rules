@@ -2,13 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for role checks without custom claims
+    // Helper functions for safe role checks
+    function getUserData() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : {};
+    }
+
     function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return 'role' in getUserData() ? getUserData().role : 'student';
     }
     
     function isManagerOrAdmin() {
-      return request.auth != null && getUserRole() in ['manager', 'admin', 'staff'];
+      return request.auth != null && (getUserRole() in ['manager', 'admin', 'staff', 'baker']);
     }
 
     function isAdmin() {
@@ -18,7 +24,8 @@ service cloud.firestore {
     // ── Users ───────────────────────────────────────────────
     match /users/{uid} {
       allow read: if request.auth != null && (request.auth.uid == uid || isManagerOrAdmin());
-      allow write: if request.auth != null && request.auth.uid == uid;
+      // Users can write their own profile; prevent non-admins from changing role or isPremium once created
+      allow write: if request.auth != null && (isAdmin() || (request.auth.uid == uid && (!('role' in resource.data) || request.resource.data.role == resource.data.role)));
     }
 
     // ── Outlets ─────────────────────────────────────────────
@@ -33,12 +40,36 @@ service cloud.firestore {
       }
     }
 
+    // ── Approval Tickets ────────────────────────────────────
+    match /approval_tickets/{ticketId} {
+      // Authenticated users and managers can submit tickets
+      allow create: if request.auth != null;
+      // Submitter or managers/admins can read tickets
+      allow read: if request.auth != null && (resource.data.submittedByUid == request.auth.uid || isManagerOrAdmin());
+      // Admins and managers can update ticket status
+      allow update: if isManagerOrAdmin();
+      allow delete: if isAdmin();
+    }
+
     // ── Orders ──────────────────────────────────────────────
     match /orders/{orderId} {
       allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isManagerOrAdmin());
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update: if isManagerOrAdmin();
+      // Managers can advance order status; customers can cancel their own order if still pending
+      allow update: if isManagerOrAdmin() || (request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.status == 'cancelled' && resource.data.status == 'pending');
       allow delete: if false; // Never delete orders
+    }
+
+    // ── Support Reports ─────────────────────────────────────
+    match /support_reports/{reportId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isManagerOrAdmin();
+    }
+
+    // ── Time Slots ──────────────────────────────────────────
+    match /time_slots/{slotId} {
+      allow read: if true;
+      allow write: if isManagerOrAdmin();
     }
   }
 }

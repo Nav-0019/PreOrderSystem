@@ -6,6 +6,7 @@ import type { User } from 'firebase/auth';
 import Login from './pages/Login';
 import DashboardLayout from './components/DashboardLayout';
 import Overview from './pages/Overview';
+import Approvals from './pages/Approvals';
 import LiveQueue from './pages/LiveQueue';
 import MenuManagement from './pages/MenuManagement';
 import Analytics from './pages/Analytics';
@@ -64,6 +65,7 @@ function App() {
 
         <Route path="/" element={user ? <DashboardLayout /> : <Navigate to="/login" />}>
           <Route index element={<Overview />} />
+          <Route path="approvals" element={<Approvals />} />
           <Route path="queue" element={<LiveQueue />} />
           <Route path="menu" element={<MenuManagement />} />
           <Route path="analytics" element={<Analytics />} />

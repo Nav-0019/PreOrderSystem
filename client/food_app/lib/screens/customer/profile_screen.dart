@@ -66,14 +66,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = context.watch<UserProvider>();
 
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 24),
-            color: theme.cardColor,
-            child: Column(
-              children: [
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              color: theme.cardColor,
+              child: Column(
+                children: [
                 // Tappable profile photo
                 GestureDetector(
                   onTap: _pickAndUploadPhoto,
@@ -227,6 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -293,13 +296,19 @@ class _LiveStatsRow extends StatelessWidget {
   Widget _stat(String value, String label, ThemeData theme) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
         decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.dividerColor)),
         child: Column(
           children: [
-            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            ),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+            ),
           ],
         ),
       ),

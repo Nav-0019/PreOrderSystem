@@ -78,27 +78,26 @@ class _MainShellState extends State<MainShell> {
         children: pages,
       ),
       bottomNavigationBar: Container(
-        height: 70,
         decoration: BoxDecoration(
           color: theme.cardColor,
           border: Border(top: BorderSide(color: theme.dividerColor)),
         ),
         child: SafeArea(
           top: false,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              // Build nav items, inserting Cart button in the middle for non-staff
-              ...List.generate(navItems.length, (i) {
-                return _buildNavButton(navItems[i], i, theme);
-              }),
-              // Cart button for non-staff roles (between Orders and Chat)
-              if (role != 'manager')
-                _buildCartButton(theme),
-            ]..sort((a, b) {
-              // Reorder to put cart in the middle
-              return 0;
-            }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                // Build nav items, inserting Cart button in the middle for non-staff
+                ...List.generate(navItems.length, (i) {
+                  return _buildNavButton(navItems[i], i, theme);
+                }),
+                // Cart button for non-staff roles
+                if (role != 'manager')
+                  _buildCartButton(theme),
+              ],
+            ),
           ),
         ),
       ),
@@ -111,13 +110,27 @@ class _MainShellState extends State<MainShell> {
       child: GestureDetector(
         onTap: () => _onTabTapped(index),
         behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(data.icon, size: 22, color: isActive ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4)),
-            const SizedBox(height: 3),
-            Text(data.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: isActive ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4))),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(data.icon, size: 22, color: isActive ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4)),
+              const SizedBox(height: 3),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  data.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isActive ? AppTheme.primary : theme.colorScheme.onSurface.withOpacity(0.4),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -130,20 +143,30 @@ class _MainShellState extends State<MainShell> {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen()));
         },
         behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.shopping_bag_outlined, size: 18, color: AppTheme.primary),
               ),
-              child: const Icon(Icons.shopping_bag_outlined, size: 22, color: AppTheme.primary),
-            ),
-            const SizedBox(height: 2),
-            const Text('Cart', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-          ],
+              const SizedBox(height: 2),
+              const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Cart',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../providers/user_provider.dart';
 import '../../theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../services/firebase_service.dart';
-import '../../models/menu_item.dart';
 import '../main_shell.dart';
 
 const _kSavedEmail = 'pref_saved_email';
@@ -252,7 +248,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 // Orange gradient header
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(28, 70, 28, 70),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -260,35 +255,46 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       colors: [AppTheme.primary, AppTheme.primaryDark],
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 86, height: 86,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Image.asset('assets/branding/AuraBake_logo.png', fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: Colors.white,
-                            alignment: Alignment.center,
-                            child: const Text('AB', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 26, color: AppTheme.primary)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('Aurabake', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.3)),
-                          const SizedBox(height: 4),
-                          Text('Your college canteen,\npre-ordered', style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.85), height: 1.3)),
+                          Container(
+                            width: 76, height: 76,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: Image.asset('assets/branding/AuraBake_logo.png', fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: Colors.white,
+                                alignment: Alignment.center,
+                                child: const Text('AB', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 26, color: AppTheme.primary)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text('Aurabake', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.3)),
+                                ),
+                                const SizedBox(height: 4),
+                                Text('Your college canteen,\npre-ordered', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.85), height: 1.3)),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
 

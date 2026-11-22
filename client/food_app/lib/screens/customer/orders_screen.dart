@@ -27,52 +27,55 @@ class _OrdersScreenState extends State<OrdersScreen> {
     
 
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 16),
-            color: theme.cardColor,
-            child: const Text('Your Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
-          ),
-          Divider(height: 1, color: theme.dividerColor),
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _ordersStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final _orders = snapshot.data ?? [];
-                final activeOrders = _orders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').toList();
-                final pastOrders = _orders.where((o) => o['status'] == 'completed' || o['status'] == 'cancelled').toList();
-
-                if (_orders.isEmpty) {
-                  return const Center(child: Text('No orders yet.'));
-                }
-
-                return ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    if (activeOrders.isNotEmpty) ...[
-                      Text('ACTIVE ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
-                      const SizedBox(height: 12),
-                      ...activeOrders.map((o) => _ActiveOrderCard(order: o)),
-                      const SizedBox(height: 20),
-                    ],
-
-                    if (pastOrders.isNotEmpty) ...[
-                      Text('PAST ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
-                      const SizedBox(height: 12),
-                      ...pastOrders.map((o) => _PastOrderCard(order: o, theme: theme)),
-                    ],
-                  ],
-                );
-              },
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              color: theme.cardColor,
+              child: const Text('Your Orders', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
             ),
-          ),
-        ],
+            Divider(height: 1, color: theme.dividerColor),
+            Expanded(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _ordersStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final _orders = snapshot.data ?? [];
+                  final activeOrders = _orders.where((o) => o['status'] != 'completed' && o['status'] != 'cancelled').toList();
+                  final pastOrders = _orders.where((o) => o['status'] == 'completed' || o['status'] == 'cancelled').toList();
+
+                  if (_orders.isEmpty) {
+                    return const Center(child: Text('No orders yet.'));
+                  }
+
+                  return ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      if (activeOrders.isNotEmpty) ...[
+                        Text('ACTIVE ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
+                        const SizedBox(height: 12),
+                        ...activeOrders.map((o) => _ActiveOrderCard(order: o)),
+                        const SizedBox(height: 20),
+                      ],
+
+                      if (pastOrders.isNotEmpty) ...[
+                        Text('PAST ORDERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.5), letterSpacing: 1.2)),
+                        const SizedBox(height: 12),
+                        ...pastOrders.map((o) => _PastOrderCard(order: o, theme: theme)),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -93,14 +96,28 @@ class _ActiveOrderCard extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Order at ${order['outletName'] ?? 'Outlet'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.primary)),
-                const SizedBox(height: 2),
-                Text('Tap to track · #${order['id'].toString().substring(0,6)}', style: TextStyle(fontSize: 12, color: AppTheme.primary.withOpacity(0.7))),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Order at ${order['outletName'] ?? 'Outlet'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.primary)),
+                  const SizedBox(height: 2),
+                  Text('Tap to track · #${order['id'].toString().substring(0, 6)}', style: TextStyle(fontSize: 12, color: AppTheme.primary.withOpacity(0.7))),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.qr_code, size: 13, color: Color(0xFF16A34A)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Paid via QR · ₹${(order['totalAmount'] as num?)?.toStringAsFixed(0) ?? '0'}',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF16A34A)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: AppTheme.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(999)),

@@ -1,0 +1,12 @@
+{
+  "framework": "vite",
+  "buildCommand": "cd client/admin_web && npm install && npm run build",
+  "outputDirectory": "client/admin_web/dist",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

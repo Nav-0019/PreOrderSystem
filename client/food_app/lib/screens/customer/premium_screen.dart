@@ -76,7 +76,6 @@ class _PremiumScreenState extends State<PremiumScreen> with SingleTickerProvider
           // Gold gradient header
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 52, 20, 32),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -84,10 +83,14 @@ class _PremiumScreenState extends State<PremiumScreen> with SingleTickerProvider
                 colors: [Color(0xFFD4A017), Color(0xFFB8860B), Color(0xFF8B6914)],
               ),
             ),
-            child: Column(
-              children: [
-                Row(
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
                   children: [
+                    Row(
+                      children: [
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
                       child: Container(
@@ -140,6 +143,8 @@ class _PremiumScreenState extends State<PremiumScreen> with SingleTickerProvider
                 ],
               ],
             ),
+          ),
+          ),
           ),
 
           // Content
@@ -287,31 +292,36 @@ class _PremiumScreenState extends State<PremiumScreen> with SingleTickerProvider
         ],
       ),
       bottomSheet: Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         decoration: BoxDecoration(color: theme.cardColor, border: Border(top: BorderSide(color: theme.dividerColor))),
-        child: GestureDetector(
-          onTap: isPremium ? _deactivatePremium : _activatePremium,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            decoration: BoxDecoration(
-              gradient: isPremium
-                  ? null
-                  : const LinearGradient(colors: [AppTheme.gold, AppTheme.goldDark]),
-              color: isPremium ? theme.scaffoldBackgroundColor : null,
-              borderRadius: BorderRadius.circular(12),
-              border: isPremium ? Border.all(color: AppTheme.red.withOpacity(0.3)) : null,
-              boxShadow: isPremium
-                  ? []
-                  : [BoxShadow(color: AppTheme.gold.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 4))],
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              isPremium ? 'Cancel Membership' : 'Activate Premium ✦',
-              style: TextStyle(
-                color: isPremium ? AppTheme.red : Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+            child: GestureDetector(
+              onTap: isPremium ? _deactivatePremium : _activatePremium,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  gradient: isPremium
+                      ? null
+                      : const LinearGradient(colors: [AppTheme.gold, AppTheme.goldDark]),
+                  color: isPremium ? theme.scaffoldBackgroundColor : null,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isPremium ? Border.all(color: AppTheme.red.withOpacity(0.3)) : null,
+                  boxShadow: isPremium
+                      ? []
+                      : [BoxShadow(color: AppTheme.gold.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 4))],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  isPremium ? 'Cancel Membership' : 'Activate Premium ✦',
+                  style: TextStyle(
+                    color: isPremium ? AppTheme.red : Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
               ),
             ),
           ),
