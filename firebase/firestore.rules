@@ -40,12 +40,18 @@ service cloud.firestore {
       }
     }
 
+    // ── Menu Items (root collection) ────────────────────────
+    match /menu_items/{itemId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     // ── Approval Tickets ────────────────────────────────────
     match /approval_tickets/{ticketId} {
       // Authenticated users and managers can submit tickets
       allow create: if request.auth != null;
       // Submitter or managers/admins can read tickets
-      allow read: if request.auth != null && (resource.data.submittedByUid == request.auth.uid || isManagerOrAdmin());
+      allow read: if request.auth != null;
       // Admins and managers can update ticket status
       allow update: if isManagerOrAdmin();
       allow delete: if isAdmin();
@@ -54,7 +60,8 @@ service cloud.firestore {
     // ── Orders ──────────────────────────────────────────────
     match /orders/{orderId} {
       allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isManagerOrAdmin());
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Customers can create orders
+      allow create: if request.auth != null;
       // Managers can advance order status; customers can cancel their own order if still pending
       allow update: if isManagerOrAdmin() || (request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.status == 'cancelled' && resource.data.status == 'pending');
       allow delete: if false; // Never delete orders

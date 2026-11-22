@@ -11,17 +11,22 @@ class FirebaseService {
 
   // ── Outlets ───────────────────────────────────────────────
 
-  /// Fetch menu items safely from both subcollection and root /menu_items
-  static Future<List<MenuItem>> _fetchMenuItemsForOutlet(DocumentSnapshot doc) async {
-    final Map<String, MenuItem> itemsMap = {};
+  /// Load all available approved menu items once and index strictly by outletId
+  static Future<Map<String, List<MenuItem>>> _loadAllMenuItemsByOutlet() async {
+    final Map<String, List<MenuItem>> result = {};
 
-    // 1. Try reading subcollection
     try {
-      final menuSnapshot = await doc.reference.collection('menu_items').get();
-      for (final m in menuSnapshot.docs) {
+      final snap = await _db.collection('menu_items').get();
+      for (final m in snap.docs) {
         final md = m.data();
-        if (md['isAvailable'] == false || md['isApproved'] == false || md['approvalStatus'] == 'pending') continue;
-        itemsMap[m.id] = MenuItem(
+        if (md['isAvailable'] == false ||
+            md['isApproved'] == false ||
+            md['approvalStatus'] == 'pending' ||
+            md['approvalStatus'] == 'rejected') {
+          continue;
+        }
+
+        final item = MenuItem(
           id: m.id,
           name: md['name'] ?? '',
           description: md['description'] ?? '',
@@ -30,42 +35,29 @@ class FirebaseService {
           icon: Icons.fastfood,
           isAvailable: md['isAvailable'] ?? true,
         );
-      }
-    } catch (_) {}
 
-    // 2. Fetch from root collection /menu_items (which has read permissions in live rules)
-    try {
-      final rootSnap = await _db.collection('menu_items').get();
-      for (final m in rootSnap.docs) {
-        final md = m.data();
         final outletId = md['outletId'] as String?;
-        // Match outletId or default if not set
-        if (outletId != null && outletId.isNotEmpty && outletId != doc.id) continue;
-        if (md['isAvailable'] == false || md['isApproved'] == false || md['approvalStatus'] == 'pending' || md['approvalStatus'] == 'rejected') continue;
-        itemsMap[m.id] = MenuItem(
-          id: m.id,
-          name: md['name'] ?? '',
-          description: md['description'] ?? '',
-          price: (md['price'] as num?)?.toDouble() ?? 0.0,
-          category: md['category'] ?? 'General',
-          icon: Icons.fastfood,
-          isAvailable: md['isAvailable'] ?? true,
-        );
+        if (outletId != null && outletId.trim().isNotEmpty) {
+          result.putIfAbsent(outletId.trim(), () => []).add(item);
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error loading menu_items: $e');
+    }
 
-    return itemsMap.values.toList();
+    return result;
   }
 
-  /// One-time fetch: get all outlets with their menu items.
+  /// One-time fetch: get all outlets with their own menu items.
   static Future<List<Outlet>> getOutlets() async {
     try {
       final snapshot = await _db.collection('outlets').get();
       final List<Outlet> outlets = [];
+      final menuMap = await _loadAllMenuItemsByOutlet();
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final menuItems = await _fetchMenuItemsForOutlet(doc);
+        final outletItems = menuMap[doc.id] ?? [];
 
         outlets.add(Outlet(
           id: doc.id,
@@ -75,7 +67,7 @@ class FirebaseService {
           isOpen: data['isOpen'] ?? true,
           queueCount: data['queueCount'] ?? 0,
           waitTime: data['waitTime'] ?? '10 mins',
-          menu: menuItems,
+          menu: outletItems,
         ));
       }
 
@@ -108,10 +100,11 @@ class FirebaseService {
   static Stream<List<Outlet>> streamOutlets() {
     return _db.collection('outlets').snapshots().asyncMap((snapshot) async {
       final List<Outlet> outlets = [];
+      final menuMap = await _loadAllMenuItemsByOutlet();
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final menuItems = await _fetchMenuItemsForOutlet(doc);
+        final outletItems = menuMap[doc.id] ?? [];
 
         outlets.add(Outlet(
           id: doc.id,
@@ -121,7 +114,7 @@ class FirebaseService {
           isOpen: data['isOpen'] ?? true,
           queueCount: data['queueCount'] ?? 0,
           waitTime: data['waitTime'] ?? '10 mins',
-          menu: menuItems,
+          menu: outletItems,
         ));
       }
 
@@ -131,8 +124,7 @@ class FirebaseService {
 
   // ── Orders ────────────────────────────────────────────────
 
-  /// Place an order — writes to Firestore.
-  /// The Cloud Function onOrderWrite will auto-update the outlet queue.
+  /// Place an order — writes directly to Firestore orders collection.
   static Future<String?> placeOrder({
     required String outletId,
     required String outletName,
@@ -142,61 +134,57 @@ class FirebaseService {
     String paymentStatus = 'PAID',
     String? transactionId,
   }) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        debugPrint('placeOrder: user not logged in');
-        return null;
-      }
-
-      final orderRef = _db.collection('orders').doc();
-      final outletRef = _db.collection('outlets').doc(outletId);
-
-      await _db.runTransaction((transaction) async {
-        // 1. Read outlet current queue
-        final outletSnap = await transaction.get(outletRef);
-        final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
-        final newQueue = currentQueue + 1;
-        final newWaitTime = '${newQueue * 2}-${newQueue * 2 + 3} mins';
-
-        // 2. Write order document
-        final pickupToken = orderRef.id.length >= 4
-            ? orderRef.id.substring(orderRef.id.length - 4).toUpperCase()
-            : '1001';
-
-        transaction.set(orderRef, {
-          'userId': user.uid,
-          'userName': user.displayName ?? 'Customer',
-          'outletId': outletId,
-          'outletName': outletName,
-          'totalAmount': totalAmount,
-          'status': 'pending',
-          'paymentMethod': paymentMethod,
-          'paymentStatus': paymentStatus,
-          'transactionId': transactionId ?? '',
-          'pickupToken': pickupToken,
-          'createdAt': FieldValue.serverTimestamp(),
-          'items': items.map((item) => {
-            'menuItemId': item['id'],
-            'name': item['name'],
-            'quantity': item['quantity'],
-            'unitPrice': item['price'],
-          }).toList(),
-        });
-
-        // 3. Increment outlet queue
-        transaction.update(outletRef, {
-          'queueCount': newQueue,
-          'waitTime': newWaitTime,
-        });
-      });
-
-      debugPrint('Order placed: ${orderRef.id}');
-      return orderRef.id;
-    } catch (e) {
-      debugPrint('Error placing order: $e');
-      return null;
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in. Please sign in to place an order.');
     }
+
+    final orderRef = _db.collection('orders').doc();
+    final outletRef = _db.collection('outlets').doc(outletId);
+
+    final pickupToken = orderRef.id.length >= 4
+        ? orderRef.id.substring(orderRef.id.length - 4).toUpperCase()
+        : '1001';
+
+    final orderData = {
+      'userId': user.uid,
+      'userName': user.displayName ?? 'Customer',
+      'outletId': outletId,
+      'outletName': outletName,
+      'totalAmount': totalAmount,
+      'status': 'pending',
+      'paymentMethod': paymentMethod,
+      'paymentStatus': paymentStatus,
+      'transactionId': transactionId ?? '',
+      'pickupToken': pickupToken,
+      'createdAt': FieldValue.serverTimestamp(),
+      'items': items.map((item) => {
+        'menuItemId': item['id'],
+        'name': item['name'],
+        'quantity': item['quantity'],
+        'unitPrice': item['price'],
+      }).toList(),
+    };
+
+    // 1. Write the order document
+    await orderRef.set(orderData);
+
+    // 2. Update outlet queue count in a safe separate block
+    try {
+      final outletSnap = await outletRef.get();
+      final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
+      final newQueue = currentQueue + 1;
+      final newWaitTime = '${newQueue * 2}-${newQueue * 2 + 3} mins';
+      await outletRef.update({
+        'queueCount': newQueue,
+        'waitTime': newWaitTime,
+      });
+    } catch (e) {
+      debugPrint('Non-critical: outlet queue count update skipped: $e');
+    }
+
+    debugPrint('Order placed: ${orderRef.id}');
+    return orderRef.id;
   }
 
   /// Stream of current user's orders (most recent first).
@@ -366,14 +354,14 @@ class FirebaseService {
 
   // ── Menu Management (staff/admin) ─────────────────────────
 
-  /// Real-time stream of menu items for a given outlet.
+  /// Real-time stream of menu items for a given outlet (only approved live items).
   static Stream<List<Map<String, dynamic>>> streamMenuItems(String outletId) {
     if (outletId.trim().isEmpty) return const Stream.empty();
     return _db.collection('menu_items').snapshots().map((snap) {
       final items = snap.docs
           .map((d) => {'id': d.id, ...d.data()})
           .where((d) =>
-              (d['outletId'] == outletId || d['outletId'] == null || (d['outletId'] as String).isEmpty) &&
+              d['outletId'] == outletId &&
               d['approvalStatus'] != 'pending' &&
               d['approvalStatus'] != 'rejected')
           .toList();
@@ -435,7 +423,7 @@ class FirebaseService {
     return ticketId;
   }
 
-  /// Real-time stream of approval tickets for an outlet (to track pending, approved, rejected status)
+  /// Real-time stream of approval tickets for an outlet (only strictly pending or rejected).
   static Stream<List<Map<String, dynamic>>> streamOutletApprovalTickets(String outletId) {
     if (outletId.trim().isEmpty) return const Stream.empty();
     return _db.collection('menu_items').snapshots().map((snap) {
@@ -454,8 +442,8 @@ class FirebaseService {
             };
           })
           .where((d) =>
-              (d['outletId'] == outletId || d['outletId'] == null) &&
-              (d['approvalStatus'] != null || d['isApproved'] == false))
+              d['outletId'] == outletId &&
+              (d['status'] == 'pending' || d['status'] == 'rejected'))
           .toList();
     });
   }
