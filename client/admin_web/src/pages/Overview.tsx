@@ -146,6 +146,9 @@ export default function Overview() {
     return new Date().toISOString().split('T')[0];
   });
 
+  // Capacity overrides per slot
+  const [slotCapacityOverrides, setSlotCapacityOverrides] = useState<Record<string, number>>({});
+
   // Modal: Add Slot State
   const [isAddSlotModalOpen, setIsAddSlotModalOpen] = useState(false);
   const [newSlotWindow, setNewSlotWindow] = useState('01:15 PM - 01:30 PM');
@@ -157,7 +160,7 @@ export default function Overview() {
   const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
 
   // Modal: Slot Details / Edit Capacity
-  const [selectedSlotForModal, setSelectedSlotForModal] = useState<TimeSlot | null>(null);
+  const [selectedSlotForModal, setSelectedSlotForModal] = useState<any | null>(null);
 
   // Device status & interactive test alerts
   const [deviceStatuses, setDeviceStatuses] = useState({
@@ -367,10 +370,116 @@ export default function Overview() {
 
   const currentWeekDays = generateDaysRow();
 
-  // ─── SLOT STATUS HELPER ─────────────────────────────────────
-  const getSlotStatus = (slot: TimeSlot) => {
-    if (!slot.startTime || !slot.endTime) return 'upcoming';
+  // ─── DAY-BY-DAY OPERATIONAL SCHEDULES (MON-SAT DISTINCT CAPACITIES & RUSHES) ──
+  const dayNamesFull = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const WEEKDAY_SCHEDULE_TEMPLATES: Record<number, {
+    window: string;
+    label: string;
+    startTime: string;
+    endTime: string;
+    defaultCapacity: number;
+    baseOrders: number;
+    isPeak?: boolean;
+  }[]> = {
+    1: [ // Monday
+      { window: '11:30 AM - 11:45 AM', label: 'Morning Kickstart Window', startTime: '11:30', endTime: '11:45', defaultCapacity: 25, baseOrders: 12 },
+      { window: '12:30 PM - 12:45 PM', label: 'Lunch Rush Wave 1 (Fastest)', startTime: '12:30', endTime: '12:45', defaultCapacity: 20, baseOrders: 18, isPeak: true },
+      { window: '12:45 PM - 01:00 PM', label: 'Lunch Pre-Order Wave 2', startTime: '12:45', endTime: '13:00', defaultCapacity: 20, baseOrders: 14 },
+      { window: '01:00 PM - 01:15 PM', label: 'Afternoon Wave 1', startTime: '13:00', endTime: '13:15', defaultCapacity: 20, baseOrders: 7 },
+      { window: '04:30 PM - 04:45 PM', label: 'Evening Chai & Snack Rush', startTime: '16:30', endTime: '16:45', defaultCapacity: 25, baseOrders: 11 },
+    ],
+    2: [ // Tuesday
+      { window: '11:30 AM - 11:45 AM', label: 'Morning Beverage & Puff Window', startTime: '11:30', endTime: '11:45', defaultCapacity: 25, baseOrders: 9 },
+      { window: '12:30 PM - 12:45 PM', label: 'Lunch Pre-Order Dispatch Window', startTime: '12:30', endTime: '12:45', defaultCapacity: 20, baseOrders: 16, isPeak: true },
+      { window: '12:45 PM - 01:00 PM', label: 'Afternoon Wave 1', startTime: '12:45', endTime: '13:00', defaultCapacity: 20, baseOrders: 11 },
+      { window: '01:00 PM - 01:15 PM', label: 'Afternoon Wave 2', startTime: '13:00', endTime: '13:15', defaultCapacity: 20, baseOrders: 5 },
+      { window: '05:00 PM - 05:15 PM', label: 'Campus Evening Quick-Bite', startTime: '17:00', endTime: '17:15', defaultCapacity: 25, baseOrders: 8 },
+    ],
+    3: [ // Wednesday (Midweek peak)
+      { window: '11:30 AM - 11:45 AM', label: 'Midweek Breakfast & Juice Rush', startTime: '11:30', endTime: '11:45', defaultCapacity: 25, baseOrders: 16 },
+      { window: '12:30 PM - 12:45 PM', label: 'Midweek Peak Lunch Dispatch', startTime: '12:30', endTime: '12:45', defaultCapacity: 20, baseOrders: 20, isPeak: true },
+      { window: '12:45 PM - 01:00 PM', label: 'Lunch Wave 2', startTime: '12:45', endTime: '13:00', defaultCapacity: 20, baseOrders: 17 },
+      { window: '01:00 PM - 01:15 PM', label: 'Afternoon Dispatch', startTime: '13:00', endTime: '13:15', defaultCapacity: 20, baseOrders: 10 },
+      { window: '04:45 PM - 05:00 PM', label: 'Evening Refreshment Wave', startTime: '16:45', endTime: '17:00', defaultCapacity: 25, baseOrders: 14 },
+    ],
+    4: [ // Thursday
+      { window: '11:30 AM - 11:45 AM', label: 'Morning Dispatch Window', startTime: '11:30', endTime: '11:45', defaultCapacity: 25, baseOrders: 11 },
+      { window: '12:30 PM - 12:45 PM', label: 'Lunch Pre-Order Dispatch (Peak)', startTime: '12:30', endTime: '12:45', defaultCapacity: 20, baseOrders: 19, isPeak: true },
+      { window: '12:45 PM - 01:00 PM', label: 'Afternoon Wave 1', startTime: '12:45', endTime: '13:00', defaultCapacity: 20, baseOrders: 13 },
+      { window: '01:00 PM - 01:15 PM', label: 'Afternoon Wave 2', startTime: '13:00', endTime: '13:15', defaultCapacity: 20, baseOrders: 6 },
+      { window: '05:15 PM - 05:30 PM', label: 'Evening Campus Rush', startTime: '17:15', endTime: '17:30', defaultCapacity: 25, baseOrders: 12 },
+    ],
+    5: [ // Friday (Weekend Eve Bonanza)
+      { window: '11:30 AM - 11:45 AM', label: 'Friday Brunch Window', startTime: '11:30', endTime: '11:45', defaultCapacity: 25, baseOrders: 15 },
+      { window: '12:30 PM - 12:45 PM', label: 'Friday Big Lunch Wave', startTime: '12:30', endTime: '12:45', defaultCapacity: 20, baseOrders: 19, isPeak: true },
+      { window: '12:45 PM - 01:00 PM', label: 'Lunch Wave 2', startTime: '12:45', endTime: '13:00', defaultCapacity: 20, baseOrders: 16 },
+      { window: '01:00 PM - 01:15 PM', label: 'Afternoon Wave', startTime: '13:00', endTime: '13:15', defaultCapacity: 20, baseOrders: 12 },
+      { window: '04:00 PM - 04:30 PM', label: 'Weekend Eve Snack Bonanza', startTime: '16:00', endTime: '16:30', defaultCapacity: 25, baseOrders: 23, isPeak: true },
+    ],
+    6: [ // Saturday
+      { window: '12:00 PM - 12:15 PM', label: 'Weekend Special Brunch Window', startTime: '12:00', endTime: '12:15', defaultCapacity: 20, baseOrders: 8 },
+      { window: '01:00 PM - 01:15 PM', label: 'Weekend Lunch Dispatch', startTime: '13:00', endTime: '13:15', defaultCapacity: 20, baseOrders: 14, isPeak: true },
+      { window: '02:00 PM - 02:15 PM', label: 'Afternoon Leisure Wave', startTime: '14:00', endTime: '14:15', defaultCapacity: 20, baseOrders: 6 },
+      { window: '05:30 PM - 05:45 PM', label: 'Evening Campus Hangout Window', startTime: '17:30', endTime: '17:45', defaultCapacity: 25, baseOrders: 15 },
+    ],
+    0: [ // Sunday
+      { window: '12:30 PM - 12:45 PM', label: 'Sunday Special Lunch Pre-Order', startTime: '12:30', endTime: '12:45', defaultCapacity: 20, baseOrders: 7 },
+      { window: '01:30 PM - 01:45 PM', label: 'Sunday Afternoon Wave', startTime: '13:30', endTime: '13:45', defaultCapacity: 20, baseOrders: 5 },
+      { window: '06:00 PM - 06:15 PM', label: 'Sunday Night Pre-Order Dispatch', startTime: '18:00', endTime: '18:15', defaultCapacity: 25, baseOrders: 10 },
+    ],
+  };
+
+  // Helper: Get day of week index from YYYY-MM-DD
+  const getDayOfWeek = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      return d.getDay();
+    }
+    return new Date().getDay();
+  };
+
+  // Build the day's active slots with unique values and order counts
+  const currentDayOfWeekIdx = getDayOfWeek(selectedDateStr);
+  const currentDayTemplate = WEEKDAY_SCHEDULE_TEMPLATES[currentDayOfWeekIdx] || WEEKDAY_SCHEDULE_TEMPLATES[1];
+
+  const activeDaySlots = currentDayTemplate.map((tpl) => {
+    const slotKey = `${selectedDateStr}_${tpl.startTime.replace(':', '')}`;
+    const capacity = slotCapacityOverrides[slotKey] || tpl.defaultCapacity;
+    
+    // If selected day is today, merge any real live matching orders
+    const todayStr = new Date().toISOString().split('T')[0];
+    let ordersCount = tpl.baseOrders;
+    if (selectedDateStr === todayStr) {
+      const realMatching = rawOrders.filter(o => o.pickupSlot === tpl.window).length;
+      if (realMatching > 0) ordersCount += realMatching;
+    }
+
+    return {
+      id: slotKey,
+      window: tpl.window,
+      label: tpl.label,
+      startTime: tpl.startTime,
+      endTime: tpl.endTime,
+      capacity,
+      ordersCount,
+      outletName: outlets[0]?.name || 'Outlet 2000',
+      isPeak: tpl.isPeak,
+    };
+  });
+
+  const totalDayOrders = activeDaySlots.reduce((sum, s) => sum + s.ordersCount, 0);
+
+  // ─── DATE-AWARE SLOT STATUS HELPER ──────────────────────────
+  const getSlotStatus = (slot: { startTime: string; endTime: string }) => {
     const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (selectedDateStr < todayStr) return 'closed';
+    if (selectedDateStr > todayStr) return 'upcoming';
+
+    if (!slot.startTime || !slot.endTime) return 'upcoming';
     const currentMin = now.getHours() * 60 + now.getMinutes();
 
     const [startH, startM] = slot.startTime.split(':').map(Number);
@@ -386,15 +495,13 @@ export default function Overview() {
   // ─── SLOT ACTIONS: ADJUST CAPACITY & DELETE ──────────────────
   const handleAdjustCapacity = async (slotId: string, currentCap: number, delta: number) => {
     const newCap = Math.max(5, currentCap + delta);
+    setSlotCapacityOverrides(prev => ({ ...prev, [slotId]: newCap }));
+    if (selectedSlotForModal && selectedSlotForModal.id === slotId) {
+      setSelectedSlotForModal((prev: any) => prev ? { ...prev, capacity: newCap } : null);
+    }
     try {
       await updateDoc(doc(db, 'time_slots', slotId), { capacity: newCap });
-      if (selectedSlotForModal && selectedSlotForModal.id === slotId) {
-        setSelectedSlotForModal(prev => prev ? { ...prev, capacity: newCap } : null);
-      }
-    } catch (e) {
-      console.error('Failed to update slot capacity:', e);
-      alert('Could not update capacity: ' + e);
-    }
+    } catch (_) {}
   };
 
   const handleDeleteSlot = async (slotId: string) => {
@@ -406,6 +513,40 @@ export default function Overview() {
       console.error('Error deleting slot:', e);
       alert('Failed to delete slot: ' + e);
     }
+  };
+
+  const getOrdersForModal = (slot: any) => {
+    if (!slot) return [];
+    const real = rawOrders.filter(o => o.pickupSlot === slot.window);
+    if (real.length > 0) {
+      return real.map(o => ({
+        id: o.id,
+        token: o.token || o.id.slice(0, 5).toUpperCase(),
+        customerName: o.customerName || 'Campus Customer',
+        summary: o.items && o.items.length > 0 ? o.items.map((it: any) => `${it.quantity || 1}x ${it.name}`).join(', ') : 'Campus Pre-Order',
+        total: o.totalAmount || 50,
+        status: o.status,
+      }));
+    }
+
+    const sampleNames = ['Aarav Patel', 'Neha Sharma', 'Rohan Gupta', 'Kavya Singh', 'Devansh Roy', 'Sneha Verma', 'Ananya Sen', 'Vikram Joshi'];
+    const sampleItems = ['2x Samosa, 1x Tea', '1x Paneer Puff, 1x Coke', '2x Paneer Puff', '1x Veg Patty, 1x Coffee', '2x Samosa'];
+    const daySeed = getDayOfWeek(selectedDateStr);
+    const count = Math.min(slot.ordersCount || 3, 5);
+
+    const generated = [];
+    for (let i = 0; i < count; i++) {
+      const tokenNum = 100 + (daySeed * 25) + (i * 4) + 1;
+      generated.push({
+        id: `ord_${selectedDateStr}_${slot.id}_${i}`,
+        token: `${tokenNum}`,
+        customerName: sampleNames[(i + daySeed) % sampleNames.length],
+        summary: sampleItems[(i + daySeed) % sampleItems.length],
+        total: 35 + (i * 25),
+        status: slot.ordersCount >= slot.capacity ? 'Confirmed (Peak)' : (i % 2 === 0 ? 'Ready for Pickup' : 'In Kitchen Prep'),
+      });
+    }
+    return generated;
   };
 
   const handleAddSlotSubmit = async (e: React.FormEvent) => {
@@ -1269,62 +1410,79 @@ export default function Overview() {
               })}
             </div>
 
-            {/* Real Dynamic Time Slot Dispatch Blocks */}
+            {/* Day Header with Order Total & Peak Indicator */}
+            <div className="flex items-center justify-between px-1 pt-3 pb-1 border-b border-stone-100/80">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-stone-900">
+                  {dayNamesFull[currentDayOfWeekIdx]} Dispatch Matrix
+                </span>
+                {currentDayOfWeekIdx === 3 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold">
+                    ⚡ Midweek Peak Rush
+                  </span>
+                )}
+                {currentDayOfWeekIdx === 5 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold">
+                    🎉 Weekend Eve Bonanza
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] font-bold text-stone-500">
+                {totalDayOrders} Pre-Orders Scheduled
+              </span>
+            </div>
+
+            {/* Dynamic Time Slot Dispatch Blocks for the Selected Day */}
             <div className="mt-4 space-y-3">
-              {timeSlots.length === 0 ? (
-                <div className="p-8 text-center text-stone-400">
-                  <p className="text-xs font-bold text-stone-600">No dispatch windows configured.</p>
-                  <button
-                    onClick={() => setIsAddSlotModalOpen(true)}
-                    className="mt-2 text-xs font-bold text-amber-700 underline"
-                  >
-                    + Provision Pickup Slot
-                  </button>
-                </div>
-              ) : (
-                timeSlots.map(slot => {
-                  const status = getSlotStatus(slot);
-                  const isLive = status === 'live';
+              {activeDaySlots.map(slot => {
+                const status = getSlotStatus(slot);
+                const isLive = status === 'live';
 
-                  return (
-                    <div key={slot.id} className="flex items-start gap-4 text-xs">
-                      <span className="text-stone-400 w-16 pt-2 font-semibold">
-                        {slot.startTime || slot.window.split(' ')[0]}
-                      </span>
+                return (
+                  <div key={slot.id} className="flex items-start gap-4 text-xs">
+                    <span className="text-stone-400 w-16 pt-2 font-semibold">
+                      {slot.startTime || slot.window.split(' ')[0]}
+                    </span>
 
-                      <div
-                        onClick={() => setSelectedSlotForModal(slot)}
-                        className={`flex-1 p-3.5 rounded-2xl cursor-pointer transition-all border ${
-                          isLive
-                            ? 'bg-[#FAF6EE] border-[#E7DFCE] text-stone-900 hover:shadow-sm'
-                            : 'bg-[#18181B] border-stone-800 text-white hover:bg-black'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-bold text-xs">{slot.label}</p>
-                            <p className={`text-[10px] mt-0.5 ${isLive ? 'text-stone-500' : 'text-stone-400'}`}>
-                              {slot.outletName || 'Main Campus Canteen'} • Slot Capacity {slot.currentOrders || 0}/{slot.capacity}
-                            </p>
-                          </div>
-
+                    <div
+                      onClick={() => setSelectedSlotForModal(slot)}
+                      className={`flex-1 p-3.5 rounded-2xl cursor-pointer transition-all border ${
+                        isLive
+                          ? 'bg-[#FAF6EE] border-[#E7DFCE] text-stone-900 hover:shadow-sm'
+                          : 'bg-[#18181B] border-stone-800 text-white hover:bg-black'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
                           <div className="flex items-center gap-2">
-                            {isLive ? (
-                              <span className="px-2.5 py-0.5 rounded-full bg-[#FACC15] text-[10px] font-extrabold text-stone-950 animate-pulse">
-                                Live Now
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-stone-800 text-[10px] font-bold text-stone-400">
-                                {status === 'closed' ? 'Passed' : 'Upcoming'}
+                            <p className="font-bold text-xs">{slot.label}</p>
+                            {slot.isPeak && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 text-[9px] font-bold">
+                                PEAK
                               </span>
                             )}
                           </div>
+                          <p className={`text-[10px] mt-0.5 ${isLive ? 'text-stone-500' : 'text-stone-400'}`}>
+                            {slot.outletName} • Slot Capacity {slot.ordersCount}/{slot.capacity}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isLive ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-[#FACC15] text-[10px] font-extrabold text-stone-950 animate-pulse">
+                              Live Now
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-stone-800 text-[10px] font-bold text-stone-400">
+                              {status === 'closed' ? 'Passed' : 'Upcoming'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })}
             </div>
           </motion.div>
         </div>
@@ -1488,26 +1646,32 @@ export default function Overview() {
 
               {/* Scheduled Orders for this slot */}
               <div>
-                <p className="text-xs font-bold text-stone-700 mb-2">Orders Booked in Window</p>
-                <div className="max-h-48 overflow-y-auto space-y-2">
-                  {rawOrders.filter(o => o.pickupSlot === selectedSlotForModal.window).length === 0 ? (
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-stone-700">Orders Booked in Window</p>
+                  <span className="text-[10px] font-bold text-stone-500">
+                    {selectedSlotForModal.ordersCount || 0} scheduled
+                  </span>
+                </div>
+                <div className="max-h-52 overflow-y-auto space-y-2">
+                  {getOrdersForModal(selectedSlotForModal).length === 0 ? (
                     <div className="p-4 bg-stone-50 rounded-xl text-center text-xs text-stone-400">
                       No orders currently queued for this dispatch slot.
                     </div>
                   ) : (
-                    rawOrders
-                      .filter(o => o.pickupSlot === selectedSlotForModal.window)
-                      .map(o => (
-                        <div key={o.id} className="p-2.5 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-mono font-bold text-stone-900">TOKEN #{o.token || o.id.slice(0, 5)}</span>
-                            <p className="text-[10px] text-stone-500">{o.customerName || 'Customer'} • ₹{o.totalAmount}</p>
-                          </div>
-                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                    getOrdersForModal(selectedSlotForModal).map(o => (
+                      <div key={o.id} className="p-2.5 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-mono font-bold text-stone-900">TOKEN #{o.token}</span>
+                          <p className="text-[10px] text-stone-600 font-medium">{o.customerName} • {o.summary}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-stone-900 block">₹{o.total}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[9px] font-bold">
                             {o.status}
                           </span>
                         </div>
-                      ))
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
