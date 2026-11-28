@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
-import '../../providers/cart_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../models/menu_item.dart';
 import '../../services/firebase_service.dart';

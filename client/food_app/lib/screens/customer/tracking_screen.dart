@@ -17,6 +17,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   String _pickupToken = '';
   String _outletName = 'Campus Stall';
   String _transactionId = '';
+  String _paymentStatus = 'PENDING_VERIFICATION';
   bool _isLoading = true;
   bool _isCancelling = false;
   late final Stream<List<Map<String, dynamic>>> _orderStream;
@@ -40,6 +41,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
           _pickupToken = token;
           _outletName = orderData['outletName'] ?? 'Campus Stall';
           _transactionId = orderData['transactionId'] ?? '';
+          _paymentStatus = (orderData['paymentStatus'] as String?) ?? 'PENDING_VERIFICATION';
 
           if (status == 'pending') {
             _step = 1; // Ordered -> In Queue
@@ -136,25 +138,61 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   : ListView(
                       padding: const EdgeInsets.all(20),
                       children: [
-                        // Payment verified badge
+                        // Payment status badge with accurate verification state
                         Container(
                           margin: const EdgeInsets.only(bottom: 16),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
+                            color: _paymentStatus == 'PAID'
+                                ? const Color(0xFFF0FDF4)
+                                : (_paymentStatus == 'VERIFICATION_REJECTED'
+                                    ? const Color(0xFFFEF2F2)
+                                    : const Color(0xFFFFFBEB)),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                            border: Border.all(
+                              color: _paymentStatus == 'PAID'
+                                  ? const Color(0xFFBBF7D0)
+                                  : (_paymentStatus == 'VERIFICATION_REJECTED'
+                                      ? const Color(0xFFFECACA)
+                                      : const Color(0xFFFDE68A)),
+                            ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.check_circle, size: 18, color: Color(0xFF16A34A)),
+                              Icon(
+                                _paymentStatus == 'PAID'
+                                    ? Icons.check_circle
+                                    : (_paymentStatus == 'VERIFICATION_REJECTED'
+                                        ? Icons.cancel
+                                        : Icons.hourglass_top),
+                                size: 18,
+                                color: _paymentStatus == 'PAID'
+                                    ? const Color(0xFF16A34A)
+                                    : (_paymentStatus == 'VERIFICATION_REJECTED'
+                                        ? const Color(0xFFDC2626)
+                                        : const Color(0xFFD97706)),
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  _transactionId.isNotEmpty
-                                      ? 'Paid via Shop QR · Ref: $_transactionId'
-                                      : 'Paid via Shop QR · Verified',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF16A34A)),
+                                  _paymentStatus == 'PAID'
+                                      ? (_transactionId.isNotEmpty
+                                          ? 'Paid via Shop QR · Verified ✓ (Ref: $_transactionId)'
+                                          : 'Paid via Shop QR · Verified ✓')
+                                      : (_paymentStatus == 'VERIFICATION_REJECTED'
+                                          ? 'Payment Reference Rejected · Verify with counter'
+                                          : (_transactionId.isNotEmpty
+                                              ? 'Payment Ref Submitted · Awaiting Verification (Ref: $_transactionId)'
+                                              : 'Awaiting Payment Verification')),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: _paymentStatus == 'PAID'
+                                        ? const Color(0xFF16A34A)
+                                        : (_paymentStatus == 'VERIFICATION_REJECTED'
+                                            ? const Color(0xFFDC2626)
+                                            : const Color(0xFFD97706)),
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),

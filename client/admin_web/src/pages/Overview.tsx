@@ -444,30 +444,42 @@ export default function Overview() {
   const currentDayOfWeekIdx = getDayOfWeek(selectedDateStr);
   const currentDayTemplate = WEEKDAY_SCHEDULE_TEMPLATES[currentDayOfWeekIdx] || WEEKDAY_SCHEDULE_TEMPLATES[1];
 
-  const activeDaySlots = currentDayTemplate.map((tpl) => {
-    const slotKey = `${selectedDateStr}_${tpl.startTime.replace(':', '')}`;
-    const capacity = slotCapacityOverrides[slotKey] || tpl.defaultCapacity;
-    
-    // If selected day is today, merge any real live matching orders
-    const todayStr = new Date().toISOString().split('T')[0];
-    let ordersCount = tpl.baseOrders;
-    if (selectedDateStr === todayStr) {
-      const realMatching = rawOrders.filter(o => o.pickupSlot === tpl.window).length;
-      if (realMatching > 0) ordersCount += realMatching;
-    }
+  // If timeSlots exist in Firestore, prioritize them; otherwise use the day's distinct schedule with 100% real order counts
+  const activeDaySlots = (timeSlots.length > 0
+    ? timeSlots.map((ts) => {
+        const capacity = slotCapacityOverrides[ts.id] || ts.capacity || 20;
+        const realCount = rawOrders.filter(o => o.pickupSlot === ts.window).length;
+        return {
+          id: ts.id,
+          window: ts.window,
+          label: ts.label,
+          startTime: ts.startTime || '12:00',
+          endTime: ts.endTime || '12:15',
+          capacity,
+          ordersCount: realCount,
+          outletName: ts.outletName || (outlets.find(o => o.id === ts.outletId)?.name || 'Campus Stall'),
+          isPeak: realCount >= (capacity * 0.75),
+        };
+      })
+    : currentDayTemplate.map((tpl) => {
+        const slotKey = `${selectedDateStr}_${tpl.startTime.replace(':', '')}`;
+        const capacity = slotCapacityOverrides[slotKey] || tpl.defaultCapacity;
+        // Count real orders matched to this slot window
+        const realCount = rawOrders.filter(o => o.pickupSlot === tpl.window).length;
 
-    return {
-      id: slotKey,
-      window: tpl.window,
-      label: tpl.label,
-      startTime: tpl.startTime,
-      endTime: tpl.endTime,
-      capacity,
-      ordersCount,
-      outletName: outlets[0]?.name || 'Outlet 2000',
-      isPeak: tpl.isPeak,
-    };
-  });
+        return {
+          id: slotKey,
+          window: tpl.window,
+          label: tpl.label,
+          startTime: tpl.startTime,
+          endTime: tpl.endTime,
+          capacity,
+          ordersCount: realCount,
+          outletName: outlets[0]?.name || 'Campus Stall',
+          isPeak: tpl.isPeak || realCount >= (capacity * 0.75),
+        };
+      })
+  );
 
   const totalDayOrders = activeDaySlots.reduce((sum, s) => sum + s.ordersCount, 0);
 
@@ -518,35 +530,14 @@ export default function Overview() {
   const getOrdersForModal = (slot: any) => {
     if (!slot) return [];
     const real = rawOrders.filter(o => o.pickupSlot === slot.window);
-    if (real.length > 0) {
-      return real.map(o => ({
-        id: o.id,
-        token: o.token || o.id.slice(0, 5).toUpperCase(),
-        customerName: o.customerName || 'Campus Customer',
-        summary: o.items && o.items.length > 0 ? o.items.map((it: any) => `${it.quantity || 1}x ${it.name}`).join(', ') : 'Campus Pre-Order',
-        total: o.totalAmount || 50,
-        status: o.status,
-      }));
-    }
-
-    const sampleNames = ['Aarav Patel', 'Neha Sharma', 'Rohan Gupta', 'Kavya Singh', 'Devansh Roy', 'Sneha Verma', 'Ananya Sen', 'Vikram Joshi'];
-    const sampleItems = ['2x Samosa, 1x Tea', '1x Paneer Puff, 1x Coke', '2x Paneer Puff', '1x Veg Patty, 1x Coffee', '2x Samosa'];
-    const daySeed = getDayOfWeek(selectedDateStr);
-    const count = Math.min(slot.ordersCount || 3, 5);
-
-    const generated = [];
-    for (let i = 0; i < count; i++) {
-      const tokenNum = 100 + (daySeed * 25) + (i * 4) + 1;
-      generated.push({
-        id: `ord_${selectedDateStr}_${slot.id}_${i}`,
-        token: `${tokenNum}`,
-        customerName: sampleNames[(i + daySeed) % sampleNames.length],
-        summary: sampleItems[(i + daySeed) % sampleItems.length],
-        total: 35 + (i * 25),
-        status: slot.ordersCount >= slot.capacity ? 'Confirmed (Peak)' : (i % 2 === 0 ? 'Ready for Pickup' : 'In Kitchen Prep'),
-      });
-    }
-    return generated;
+    return real.map(o => ({
+      id: o.id,
+      token: o.token || o.id.slice(0, 5).toUpperCase(),
+      customerName: o.customerName || 'Campus Customer',
+      summary: o.items && o.items.length > 0 ? o.items.map((it: any) => `${it.quantity || 1}x ${it.name}`).join(', ') : 'Campus Pre-Order',
+      total: o.totalAmount || 50,
+      status: o.status,
+    }));
   };
 
   const handleAddSlotSubmit = async (e: React.FormEvent) => {
@@ -685,6 +676,31 @@ export default function Overview() {
     } catch (e) {
       console.error('Error deleting outlet:', e);
       alert('Failed to delete stall: ' + e);
+    }
+  };
+
+  const handleResetCanonicalOutlets = async () => {
+    if (!window.confirm("Purge deprecated test outlets and restore canonical campus stalls (Nescafe Center, Campus Canteen, Juice Bar)?")) return;
+    try {
+      for (const o of outlets) {
+        if (!['o1', 'o2', 'o3'].includes(o.id)) {
+          try {
+            await deleteDoc(doc(db, 'outlets', o.id));
+          } catch (_) {}
+        }
+      }
+      const canonicals = [
+        { id: 'o1', name: 'Nescafe Center', isOpen: true, queueCount: 0, waitTime: 'No wait', upiId: '7310347742@nyes' },
+        { id: 'o2', name: 'Campus Canteen', isOpen: true, queueCount: 0, waitTime: 'No wait', upiId: '7310347742@nyes' },
+        { id: 'o3', name: 'Juice Bar', isOpen: false, queueCount: 0, waitTime: 'Closed', upiId: '7310347742@nyes' },
+      ];
+      for (const c of canonicals) {
+        await setDoc(doc(db, 'outlets', c.id), c, { merge: true });
+      }
+      alert('Canonical campus stalls restored successfully! ✓');
+    } catch (e) {
+      console.error('Failed to reset stalls:', e);
+      alert('Failed to reset stalls: ' + e);
     }
   };
 
@@ -987,6 +1003,15 @@ export default function Overview() {
                       </div>
                     ))
                   )}
+
+                  <button
+                    onClick={handleResetCanonicalOutlets}
+                    className="w-full py-2 px-3 mt-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 hover:text-stone-900 text-[10px] font-bold transition-colors flex items-center justify-center gap-1.5 border border-stone-200/60"
+                    title="Clean up test stalls and ensure canonical stalls (Nescafe, Canteen, Juice Bar) are active"
+                  >
+                    <RotateCcw size={11} className="text-stone-500" />
+                    <span>Restore Canonical Stalls / Purge Legacy</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1673,6 +1698,15 @@ export default function Overview() {
                       </div>
                     ))
                   )}
+
+                  <button
+                    onClick={handleResetCanonicalOutlets}
+                    className="w-full py-2 px-3 mt-1 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 hover:text-stone-900 text-[10px] font-bold transition-colors flex items-center justify-center gap-1.5 border border-stone-200/60"
+                    title="Clean up test stalls and ensure canonical stalls (Nescafe, Canteen, Juice Bar) are active"
+                  >
+                    <RotateCcw size={11} className="text-stone-500" />
+                    <span>Restore Canonical Stalls / Purge Legacy</span>
+                  </button>
                 </div>
               </div>
 

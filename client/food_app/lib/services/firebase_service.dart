@@ -142,7 +142,6 @@ class FirebaseService {
     }
 
     final orderRef = _db.collection('orders').doc();
-    final outletRef = _db.collection('outlets').doc(outletId);
 
     final pickupToken = orderRef.id.length >= 4
         ? orderRef.id.substring(orderRef.id.length - 4).toUpperCase()
@@ -169,22 +168,9 @@ class FirebaseService {
       }).toList(),
     };
 
-    // Execute atomic transaction: write order AND increment outlet queue count
+    // Execute atomic order placement; outlet queue metrics are authoritatively managed server-side
     await _db.runTransaction((transaction) async {
-      final outletSnap = await transaction.get(outletRef);
-      final currentQueue = outletSnap.exists
-          ? (outletSnap.data()?['queueCount'] as int? ?? 0)
-          : 0;
-      final newQueue = currentQueue + 1;
-      final newWaitTime = '${newQueue * 2}-${newQueue * 2 + 3} mins';
-
       transaction.set(orderRef, orderData);
-      if (outletSnap.exists) {
-        transaction.update(outletRef, {
-          'queueCount': newQueue,
-          'waitTime': newWaitTime,
-        });
-      }
     });
 
     debugPrint('Order placed atomically: ${orderRef.id} with slot: ${orderData['pickupSlot']}');
@@ -265,25 +251,7 @@ class FirebaseService {
       }
 
       await orderRef.update(updateData);
-
-      // Decrement queue count for outlet in isolated block
-      if (status == 'completed' || status == 'cancelled') {
-        try {
-          final snap = await orderRef.get();
-          final outletId = snap.data()?['outletId'] as String?;
-          if (outletId != null && outletId.isNotEmpty) {
-            final outletRef = _db.collection('outlets').doc(outletId);
-            final oSnap = await outletRef.get();
-            final currentQueue = oSnap.data()?['queueCount'] as int? ?? 0;
-            final newQueue = currentQueue > 0 ? currentQueue - 1 : 0;
-            final newWaitTime = newQueue == 0 ? 'No wait' : '${newQueue * 2}-${newQueue * 2 + 3} mins';
-            await outletRef.update({
-              'queueCount': newQueue,
-              'waitTime': newWaitTime,
-            });
-          }
-        } catch (_) {}
-      }
+      // Queue count decrement is handled authoritatively by server-side Cloud Function onOrderStatusUpdated
     } catch (e) {
       debugPrint('Error updating order status: $e');
       rethrow;
@@ -299,24 +267,13 @@ class FirebaseService {
         if (!orderSnap.exists) return;
         final data = orderSnap.data()!;
         final status = data['status'] as String?;
-        final outletId = data['outletId'] as String?;
         if (status != 'pending') return;
 
-        transaction.update(orderRef, {'status': 'cancelled'});
-
-        if (outletId != null) {
-          final outletRef = _db.collection('outlets').doc(outletId);
-          final outletSnap = await transaction.get(outletRef);
-          if (outletSnap.exists) {
-            final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
-            final newQueue = currentQueue > 0 ? currentQueue - 1 : 0;
-            final newWaitTime = newQueue == 0 ? 'No wait' : '${newQueue * 2}-${newQueue * 2 + 3} mins';
-            transaction.update(outletRef, {
-              'queueCount': newQueue,
-              'waitTime': newWaitTime,
-            });
-          }
-        }
+        transaction.update(orderRef, {
+          'status': 'cancelled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+        });
+        // Queue count decrement is handled authoritatively by server-side Cloud Function onOrderStatusUpdated
       });
       return true;
     } catch (e) {

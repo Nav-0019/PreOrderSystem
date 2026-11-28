@@ -29,12 +29,12 @@
 | **Cart** | Cart Item Management | WORKING | Local State | Local State | **WORKING** | Reactive state via `CartProvider`. Quantity increment, decrement, and removal. |
 | **Cart** | Premium Priority Discount | WORKING | Local State | Local State | **WORKING** | Automatically applies 10% discount and priority tagging if `isPremium == true`. |
 | **Cart** | Pickup Slot Selection | WORKING | WORKING | WORKING | **WORKING** | Customer chooses preferred dispatch slot; persisted in order document. |
-| **Checkout** | Shop UPI QR Payment | WORKING | WORKING | WORKING | **PARTIALLY WORKING** | Dynamic UPI QR URI rendered. Validates UTR input and records as `PENDING_VERIFICATION`. |
-| **Orders** | Order Placement | WORKING | WORKING | WORKING | **WORKING** | Atomic Firestore transaction writes `/orders` and increments `/outlets/{id}.queueCount`. |
+| **Checkout** | Shop UPI QR Payment | WORKING | WORKING | WORKING | **PARTIALLY WORKING** | Dynamic UPI QR URI rendered. Validates UTR input and records as `PENDING_VERIFICATION`. Counter staff verifies payment reference before approval. |
+| **Orders** | Order Placement | WORKING | WORKING | WORKING | **WORKING** | Client creates order atomically; Cloud Functions (`onOrderCreated`) authoritatively increments outlet queue metrics. |
 | **Orders** | Active / Past History | WORKING | WORKING | WORKING | **WORKING** | Real-time `streamMyOrders()` splits active vs completed orders with client-side sort. |
-| **Tracking** | Live Order Tracking | WORKING | WORKING | WORKING | **WORKING** | Real-time `streamSingleOrder()` updates steps: Ordered -> In Queue -> Preparing -> Ready. |
-| **Tracking** | Order Cancellation | WORKING | WORKING | WORKING | **WORKING** | Order cancellation allowed if pending; transaction reverts queue count. |
-| **Handover** | Counter Pickup QR | WORKING | WORKING | WORKING | **WORKING** | Dynamic QR code and 4-digit pickup token generated when order reaches `ready`. |
+| **Tracking** | Live Order Tracking | WORKING | WORKING | WORKING | **WORKING** | Real-time `streamSingleOrder()` updates steps: Ordered -> In Queue -> Preparing -> Ready. Accurate payment state badge (`PENDING_VERIFICATION` vs `PAID`). |
+| **Tracking** | Order Cancellation | WORKING | WORKING | WORKING | **WORKING** | Order cancellation allowed if pending; Cloud Functions (`onOrderStatusUpdated`) authoritatively decrements queue count. |
+| **Handover** | Counter Pickup Token Verification | WORKING | WORKING | WORKING | **WORKING** | Student presents dynamic QR and 4-digit pickup token; manager manually verifies token in confirmation dialog before handover. |
 | **Support** | Bug & Issue Reporting | WORKING | WORKING | WORKING | **WORKING** | Form submits to `/support_reports`, accessible by Admin in Settings Hub. |
 | **Membership** | AuraBake Premium Upgrade | WORKING | Local State | WORKING | **PARTIALLY WORKING** | Toggles `isPremium` in user provider. |
 
@@ -54,7 +54,7 @@
 | **Queue** | Live Order Queue Stream | WORKING | WORKING | WORKING | **WORKING** | Real-time `streamOutletOrders()` displays incoming orders for the assigned outlet. |
 | **Queue** | Start Prep & Countdown Timer | WORKING | WORKING | WORKING | **WORKING** | Updates status to `prep`, writes `prepStartedAt`, and runs countdown timer. |
 | **Queue** | Mark Order Ready | WORKING | WORKING | WORKING | **WORKING** | Updates status to `ready`. Customer tracking screen displays pickup QR. |
-| **Handover** | Handover Verification Dialog | WORKING | WORKING | WORKING | **WORKING** | Requires entering the student's 4-digit pickup token before marking `completed`. |
+| **Handover** | Handover Verification Dialog | WORKING | WORKING | WORKING | **WORKING** | Manager compares the student's 4-digit pickup token in confirmation dialog before marking order completed. |
 | **Archive** | Past Order History | WORKING | WORKING | WORKING | **WORKING** | Dedicated Past Orders tab in `BakerQueueScreen` displays historical order logs. |
 
 ---
@@ -65,11 +65,11 @@
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Authentication** | Admin Web Login | WORKING | WORKING | WORKING | **WORKING** | Secure login (hardcoded credentials removed, password reset enabled). |
 | **Overview** | System Stats Summary | WORKING | WORKING | WORKING | **WORKING** | Real-time `onSnapshot` with `system_stats` aggregates and order velocity metrics. |
-| **Overview** | Dynamic Dispatch Schedule | WORKING | WORKING | WORKING | **WORKING** | Day-of-week custom dispatch windows with capacity and peak tags. |
+| **Overview** | Dynamic Dispatch Schedule | WORKING | WORKING | WORKING | **WORKING** | Day-of-week custom dispatch windows with real Firestore slots & order counts. |
 | **Live Queue** | Real-Time Order Stream | WORKING | WORKING | WORKING | **WORKING** | Live order stream with status advancement and queue count synchronization. |
 | **Menu** | Menu Catalog & Pricing | WORKING | WORKING | WORKING | **WORKING** | Full cross-outlet menu catalog with search, availability toggles, and deletion. |
 | **Approvals** | Menu Item Approvals Desk | WORKING | WORKING | WORKING | **WORKING** | Review manager submissions; one-click Approve / Reject actions. |
-| **Settings Hub** | Customer Queries & Reports | WORKING | WORKING | WORKING | **WORKING** | Customer dispute desk, instant refund trigger, resolution notes, counter logging. |
+| **Settings Hub** | Customer Queries & Reports | WORKING | WORKING | WORKING | **WORKING** | Customer dispute desk, recorded refund status tracking, resolution notes, counter logging. |
 | **Settings Hub** | Manager & Stall Governance | WORKING | WORKING | WORKING | **WORKING** | Recalculate & Sync queue, emergency stall intake toggle, terminal UPI config. |
 | **Settings Hub** | Order Emergency Doctor | WORKING | WORKING | WORKING | **WORKING** | Search by Order ID/Token -> Force Ready, Complete, Full Refund, Cancel & Void. |
 | **Settings Hub** | Platform Gateway & Preferences| WORKING | WORKING | WORKING | **WORKING** | Campus brand title, master UPI ID, operating hours, convenience fees, audio chimes. |

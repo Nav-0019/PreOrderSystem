@@ -35,8 +35,8 @@ service cloud.firestore {
 
     // ── Users Collection ────────────────────────────────────
     match /users/{uid} {
-      // Students can read their own profile; managers and admins can read profiles
-      allow read: if request.auth != null && (request.auth.uid == uid || isManagerOrAdmin());
+      // Students can read their own profile; admins can read all profiles (SEC-06)
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
 
       // Create: Users can register their own profile; cannot self-grant admin/manager or isPremium
       allow create: if request.auth != null && request.auth.uid == uid
@@ -60,11 +60,9 @@ service cloud.firestore {
       allow read: if true;
       allow create, delete: if isAdmin();
       
-      // Managers can only update their assigned outlet; admins can update any;
-      // Atomic queue increments allowed during verified order checkout
-      allow update: if isAdmin()
-                    || isAssignedManager(outletId)
-                    || (request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['queueCount', 'waitTime']));
+      // Managers can only update their assigned outlet; admins can update any.
+      // SEC-02: Broad client-side queueCount/waitTime modification removed.
+      allow update: if isAdmin() || isAssignedManager(outletId);
 
       // Subcollection menu_items for backward compatibility
       match /menu_items/{itemId} {
@@ -99,12 +97,19 @@ service cloud.firestore {
 
     // ── Approval Tickets Collection ─────────────────────────
     match /approval_tickets/{ticketId} {
-      // Outlet managers can submit tickets for items
-      allow create: if isManagerOrAdmin();
+      // SEC-08: Submitter identity and outlet binding strictly validated
+      allow create: if isAdmin() || (
+        isManager() &&
+        request.resource.data.submittedByUid == request.auth.uid &&
+        'outletId' in request.resource.data &&
+        request.resource.data.outletId == getManagedOutletId()
+      );
 
-      // Submitter, managers, and admins can view approval tickets
+      // Submitter, assigned outlet managers, and admins can view approval tickets
       allow read: if request.auth != null && (
-        resource.data.submittedByUid == request.auth.uid || isManagerOrAdmin()
+        resource.data.submittedByUid == request.auth.uid ||
+        isAdmin() ||
+        (isManager() && resource.data.outletId == getManagedOutletId())
       );
 
       // Only Admins can approve or reject tickets
@@ -131,14 +136,21 @@ service cloud.firestore {
 
       // Update:
       // 1. Customer can cancel their own order if still pending
-      // 2. Assigned manager or admin can advance order status and verify pickup token
+      // 2. SEC-03: Assigned manager can only update non-financial status and preparation fields
       allow update: if (
         request.auth != null &&
         resource.data.userId == request.auth.uid &&
         resource.data.status == 'pending' &&
         request.resource.data.status == 'cancelled' &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
-      ) || isAssignedManager(resource.data.outletId);
+      ) || (
+        isAssignedManager(resource.data.outletId) &&
+        request.resource.data.status in ['pending', 'prep', 'ready', 'completed', 'cancelled'] &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'userId', 'outletId', 'items', 'totalAmount', 'createdAt',
+          'pickupToken', 'paymentMethod', 'paymentStatus'
+        ])
+      ) || isAdmin();
 
       // Orders must never be deleted
       allow delete: if false;
@@ -156,7 +168,17 @@ service cloud.firestore {
     // ── Time Slots Collection ───────────────────────────────
     match /time_slots/{slotId} {
       allow read: if true;
-      allow write: if isManagerOrAdmin();
+      // SEC-07: Time-slot writes scoped to assigned outlet for managers
+      allow create: if isAdmin() || (
+        isManager() &&
+        'outletId' in request.resource.data &&
+        request.resource.data.outletId == getManagedOutletId()
+      );
+      allow update, delete: if isAdmin() || (
+        isManager() &&
+        resource.data.outletId == getManagedOutletId() &&
+        (!('outletId' in request.resource.data) || request.resource.data.outletId == resource.data.outletId)
+      );
     }
 
     // ── System Settings Collection ──────────────────────────

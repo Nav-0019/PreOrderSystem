@@ -608,12 +608,42 @@ class _OrderTicketState extends State<_OrderTicket> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.qr_code, size: 14, color: Color(0xFF16A34A)),
+                        Icon(
+                          (order['paymentStatus'] as String?) == 'PAID'
+                              ? Icons.check_circle
+                              : ((order['paymentStatus'] as String?) == 'VERIFICATION_REJECTED'
+                                  ? Icons.cancel
+                                  : Icons.hourglass_top),
+                          size: 14,
+                          color: (order['paymentStatus'] as String?) == 'PAID'
+                              ? const Color(0xFF16A34A)
+                              : ((order['paymentStatus'] as String?) == 'VERIFICATION_REJECTED'
+                                  ? const Color(0xFFDC2626)
+                                  : const Color(0xFFD97706)),
+                        ),
                         const SizedBox(width: 4),
-                        const Text('UPI QR Paid', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF16A34A))),
+                        Text(
+                          (order['paymentStatus'] as String?) == 'PAID'
+                              ? 'UPI Verified ✓'
+                              : ((order['paymentStatus'] as String?) == 'VERIFICATION_REJECTED'
+                                  ? 'Payment Rejected'
+                                  : 'UTR Pending Verification'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: (order['paymentStatus'] as String?) == 'PAID'
+                                ? const Color(0xFF16A34A)
+                                : ((order['paymentStatus'] as String?) == 'VERIFICATION_REJECTED'
+                                    ? const Color(0xFFDC2626)
+                                    : const Color(0xFFD97706)),
+                          ),
+                        ),
                         if ((order['transactionId'] as String?)?.isNotEmpty == true && order['transactionId'] != 'UPI_VERIFIED') ...[
                           const SizedBox(width: 4),
-                          Text('(#${order['transactionId']})', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                          Text(
+                            '(#${order['transactionId']})',
+                            style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                          ),
                         ],
                       ],
                     ),

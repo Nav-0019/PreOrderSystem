@@ -38,6 +38,28 @@ exports.onOrderCreated = functions.firestore
     } catch (err) {
       console.error("[OrderCreated] Error updating system_stats:", err);
     }
+
+    // Authoritative Server-side Queue Increment
+    if (outletId) {
+      try {
+        const outletRef = db.collection("outlets").doc(outletId);
+        await db.runTransaction(async (transaction) => {
+          const outletDoc = await transaction.get(outletRef);
+          if (!outletDoc.exists) return;
+          const currentQueue = outletDoc.data().queueCount || 0;
+          const newQueue = currentQueue + 1;
+          const newWaitTime = `${newQueue * 2}-${newQueue * 2 + 3} mins`;
+          transaction.update(outletRef, {
+            queueCount: newQueue,
+            waitTime: newWaitTime,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        });
+        console.log(`[OrderCreated] Authoritatively incremented queue count for outlet ${outletId}`);
+      } catch (err) {
+        console.error(`[OrderCreated] Failed to increment outlet ${outletId} queue:`, err);
+      }
+    }
   });
 
 /**
@@ -91,6 +113,7 @@ exports.onOrderStatusUpdated = functions.firestore
 /**
  * Callable Function: Manager or Admin verifies student payment reference (UTR).
  * Transitions paymentStatus from 'PENDING_VERIFICATION' to 'PAID'.
+ * Enforces SEC-05: outlet scoping and strict precondition checks.
  */
 exports.verifyPayment = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -104,7 +127,8 @@ exports.verifyPayment = functions.https.onCall(async (data, context) => {
 
   const callerUid = context.auth.uid;
   const userDoc = await db.collection("users").doc(callerUid).get();
-  const role = userDoc.exists ? userDoc.data().role : "student";
+  const userData = userDoc.exists ? userDoc.data() : {};
+  const role = userData.role || "student";
 
   if (!["admin", "manager", "staff", "baker"].includes(role)) {
     throw new functions.https.HttpsError("permission-denied", "Only staff or administrators can verify payments.");
@@ -115,6 +139,18 @@ exports.verifyPayment = functions.https.onCall(async (data, context) => {
 
   if (!orderDoc.exists) {
     throw new functions.https.HttpsError("not-found", "Order not found.");
+  }
+
+  const orderData = orderDoc.data();
+
+  // SEC-05: Manager must be assigned to this order's outlet (unless admin)
+  if (role !== "admin" && userData.managedOutletId !== orderData.outletId) {
+    throw new functions.https.HttpsError("permission-denied", "Unauthorized: Manager not assigned to this outlet's orders.");
+  }
+
+  // Precondition: Order must be awaiting verification
+  if (orderData.paymentStatus !== "PENDING_VERIFICATION") {
+    throw new functions.https.HttpsError("failed-precondition", "Order payment is not pending verification.");
   }
 
   const newStatus = isApproved ? "PAID" : "VERIFICATION_REJECTED";
@@ -130,6 +166,7 @@ exports.verifyPayment = functions.https.onCall(async (data, context) => {
 
 /**
  * Callable Function: Recalculate & Sync queue count for a specific outlet.
+ * Enforces SEC-04: caller role and outlet scoping.
  */
 exports.syncOutletQueue = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -139,6 +176,22 @@ exports.syncOutletQueue = functions.https.onCall(async (data, context) => {
   const { outletId } = data;
   if (!outletId) {
     throw new functions.https.HttpsError("invalid-argument", "Missing outletId.");
+  }
+
+  const callerUid = context.auth.uid;
+  const userDoc = await db.collection("users").doc(callerUid).get();
+  const userData = userDoc.exists ? userDoc.data() : {};
+  const role = userData.role || "student";
+
+  // SEC-04: Must be admin or manager assigned to this outlet
+  if (role !== "admin" && userData.managedOutletId !== outletId) {
+    throw new functions.https.HttpsError("permission-denied", "Unauthorized for this outlet.");
+  }
+
+  const outletRef = db.collection("outlets").doc(outletId);
+  const outletDoc = await outletRef.get();
+  if (!outletDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Outlet not found.");
   }
 
   // Count active pending, prep, ready orders
@@ -151,7 +204,7 @@ exports.syncOutletQueue = functions.https.onCall(async (data, context) => {
   const activeCount = activeSnap.size;
   const waitTime = activeCount === 0 ? "No wait" : `${activeCount * 2}-${activeCount * 2 + 3} mins`;
 
-  await db.collection("outlets").doc(outletId).update({
+  await outletRef.update({
     queueCount: activeCount,
     waitTime: waitTime,
     lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
