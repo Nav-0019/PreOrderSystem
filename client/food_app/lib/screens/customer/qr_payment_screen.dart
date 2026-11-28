@@ -13,6 +13,7 @@ class QrPaymentScreen extends StatefulWidget {
   final String outletId;
   final String outletName;
   final List<Map<String, dynamic>> items;
+  final String? pickupSlot;
 
   const QrPaymentScreen({
     super.key,
@@ -20,6 +21,7 @@ class QrPaymentScreen extends StatefulWidget {
     required this.outletId,
     required this.outletName,
     required this.items,
+    this.pickupSlot,
   });
 
   @override
@@ -90,6 +92,17 @@ class _QrPaymentScreenState extends State<QrPaymentScreen> {
     setState(() => _isSubmitting = true);
 
     final utr = _utrController.text.trim();
+    if (utr.isEmpty || utr.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter the valid UPI transaction reference (UTR) from your payment app.'),
+          backgroundColor: AppTheme.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      setState(() => _isSubmitting = false);
+      return;
+    }
 
     try {
       final orderId = await FirebaseService.placeOrder(
@@ -97,9 +110,10 @@ class _QrPaymentScreenState extends State<QrPaymentScreen> {
         outletName: widget.outletName,
         totalAmount: widget.totalAmount,
         items: widget.items,
+        pickupSlot: widget.pickupSlot,
         paymentMethod: 'UPI_QR',
-        paymentStatus: 'PAID',
-        transactionId: utr.isNotEmpty ? utr : 'UPI_VERIFIED',
+        paymentStatus: 'PENDING_VERIFICATION',
+        transactionId: utr,
       );
 
       if (!mounted) return;

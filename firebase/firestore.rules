@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for safe role checks
+    // ── Helper functions for safe, outlet-scoped role checks ──
     function getUserData() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
@@ -12,71 +12,157 @@ service cloud.firestore {
     function getUserRole() {
       return 'role' in getUserData() ? getUserData().role : 'student';
     }
-    
-    function isManagerOrAdmin() {
-      return request.auth != null && (getUserRole() in ['manager', 'admin', 'staff', 'baker']);
-    }
 
     function isAdmin() {
       return request.auth != null && getUserRole() == 'admin';
     }
 
-    // ── Users ───────────────────────────────────────────────
+    function isManager() {
+      return request.auth != null && (getUserRole() in ['manager', 'staff', 'baker']);
+    }
+
+    function isManagerOrAdmin() {
+      return isAdmin() || isManager();
+    }
+
+    function getManagedOutletId() {
+      return 'managedOutletId' in getUserData() ? getUserData().managedOutletId : null;
+    }
+
+    function isAssignedManager(outletId) {
+      return isAdmin() || (isManager() && getManagedOutletId() == outletId);
+    }
+
+    // ── Users Collection ────────────────────────────────────
     match /users/{uid} {
+      // Students can read their own profile; managers and admins can read profiles
       allow read: if request.auth != null && (request.auth.uid == uid || isManagerOrAdmin());
-      // Users can write their own profile; prevent non-admins from changing role or isPremium once created
-      allow write: if request.auth != null && (isAdmin() || (request.auth.uid == uid && (!('role' in resource.data) || request.resource.data.role == resource.data.role)));
-    }
 
-    // ── Outlets ─────────────────────────────────────────────
-    match /outlets/{outletId} {
-      allow read: if true;
-      allow write: if request.auth != null && (isAdmin() || isManagerOrAdmin() || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['queueCount', 'waitTime']));
+      // Create: Users can register their own profile; cannot self-grant admin/manager or isPremium
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && (!('role' in request.resource.data) || request.resource.data.role == 'student' || isAdmin())
+                    && (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false || isAdmin())
+                    && (!('managedOutletId' in request.resource.data) || isAdmin());
 
-      // Menu items (subcollection of outlets)
-      match /menu_items/{itemId} {
-        allow read: if true;
-        allow write: if isManagerOrAdmin();
-      }
-    }
+      // Update: Users can update basic profile info; privileged fields are locked to Admins
+      allow update: if request.auth != null && (
+        isAdmin() || (
+          request.auth.uid == uid &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isPremium', 'managedOutletId'])
+        )
+      );
 
-    // ── Menu Items (root collection) ────────────────────────
-    match /menu_items/{itemId} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-
-    // ── Approval Tickets ────────────────────────────────────
-    match /approval_tickets/{ticketId} {
-      // Authenticated users and managers can submit tickets
-      allow create: if request.auth != null;
-      // Submitter or managers/admins can read tickets
-      allow read: if request.auth != null;
-      // Admins and managers can update ticket status
-      allow update: if isManagerOrAdmin();
       allow delete: if isAdmin();
     }
 
-    // ── Orders ──────────────────────────────────────────────
-    match /orders/{orderId} {
-      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isManagerOrAdmin());
-      // Customers can create orders
-      allow create: if request.auth != null;
-      // Managers can advance order status; customers can cancel their own order if still pending
-      allow update: if isManagerOrAdmin() || (request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.status == 'cancelled' && resource.data.status == 'pending');
-      allow delete: if false; // Never delete orders
+    // ── Outlets Collection ──────────────────────────────────
+    match /outlets/{outletId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      
+      // Managers can only update their assigned outlet; admins can update any;
+      // Atomic queue increments allowed during verified order checkout
+      allow update: if isAdmin()
+                    || isAssignedManager(outletId)
+                    || (request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['queueCount', 'waitTime']));
+
+      // Subcollection menu_items for backward compatibility
+      match /menu_items/{itemId} {
+        allow read: if true;
+        allow write: if isAssignedManager(outletId);
+      }
     }
 
-    // ── Support Reports ─────────────────────────────────────
+    // ── Canonical Menu Items Collection ─────────────────────
+    match /menu_items/{itemId} {
+      allow read: if true;
+
+      // Only Admin or the assigned outlet manager can create items
+      allow create: if isAdmin() || (
+        isManager() &&
+        'outletId' in request.resource.data &&
+        request.resource.data.outletId == getManagedOutletId()
+      );
+
+      // Only Admin or the assigned outlet manager can update/delete items
+      allow update: if isAdmin() || (
+        isManager() &&
+        resource.data.outletId == getManagedOutletId() &&
+        (!('outletId' in request.resource.data) || request.resource.data.outletId == resource.data.outletId)
+      );
+
+      allow delete: if isAdmin() || (
+        isManager() &&
+        resource.data.outletId == getManagedOutletId()
+      );
+    }
+
+    // ── Approval Tickets Collection ─────────────────────────
+    match /approval_tickets/{ticketId} {
+      // Outlet managers can submit tickets for items
+      allow create: if isManagerOrAdmin();
+
+      // Submitter, managers, and admins can view approval tickets
+      allow read: if request.auth != null && (
+        resource.data.submittedByUid == request.auth.uid || isManagerOrAdmin()
+      );
+
+      // Only Admins can approve or reject tickets
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Orders Collection ───────────────────────────────────
+    match /orders/{orderId} {
+      // Customer reads their own orders; assigned manager reads their outlet orders; admin reads all
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin() ||
+        isAssignedManager(resource.data.outletId)
+      );
+
+      // Create: Authenticated customer creates order with valid required fields and pending status
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.totalAmount is number
+                    && request.resource.data.totalAmount > 0
+                    && 'outletId' in request.resource.data;
+
+      // Update:
+      // 1. Customer can cancel their own order if still pending
+      // 2. Assigned manager or admin can advance order status and verify pickup token
+      allow update: if (
+        request.auth != null &&
+        resource.data.userId == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'cancelled' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+      ) || isAssignedManager(resource.data.outletId);
+
+      // Orders must never be deleted
+      allow delete: if false;
+    }
+
+    // ── Customer Support Reports ────────────────────────────
     match /support_reports/{reportId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if isManagerOrAdmin();
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid || isManagerOrAdmin()
+      );
+      allow update, delete: if isManagerOrAdmin();
     }
 
-    // ── Time Slots ──────────────────────────────────────────
+    // ── Time Slots Collection ───────────────────────────────
     match /time_slots/{slotId} {
       allow read: if true;
       allow write: if isManagerOrAdmin();
+    }
+
+    // ── System Settings Collection ──────────────────────────
+    match /system_settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

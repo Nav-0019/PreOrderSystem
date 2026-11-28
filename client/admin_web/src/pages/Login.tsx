@@ -3,7 +3,7 @@ import { auth, db } from '../lib/firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { Loader2, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Loader2, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -31,7 +31,7 @@ export default function Login() {
       }
     } catch (err: any) {
       if (err.code === 'auth/invalid-credential') {
-        setError('Invalid password or email. Tip: For shubhamchauhan0019@gmail.com, default password is "aurabake0019". Click "Auto-Fill" below.');
+        setError('Invalid email or password. Please verify your credentials or contact system support.');
       } else {
         setError(err.message || 'Login failed');
       }
@@ -40,23 +40,14 @@ export default function Login() {
     }
   };
 
-  const autofillShubham = () => {
-    setEmail('shubhamchauhan0019@gmail.com');
-    setPassword('aurabake0019');
-    setError(null);
-  };
-
-  const autofillMaster = () => {
-    setEmail('admin@aurabake.app');
-    setPassword('Aurabake@Admin2026');
-    setError(null);
-  };
-
   const handleResetPassword = async () => {
-    const targetEmail = email.trim() || 'shubhamchauhan0019@gmail.com';
+    if (!email.trim()) {
+      setError('Please enter your administrator email address above to receive a password reset link.');
+      return;
+    }
     try {
       setLoading(true);
-      await sendPasswordResetEmail(auth, targetEmail);
+      await sendPasswordResetEmail(auth, email.trim());
       setResetSent(true);
       setError(null);
     } catch (err: any) {
@@ -160,36 +151,17 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Quick One-Click Admin Auto-Fill Helper */}
-        <div className="mt-6 pt-5 border-t border-stone-800 space-y-2">
-          <p className="text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles size={12} className="text-[#FACC15]" />
-            <span>Instant One-Click Login</span>
-          </p>
-          <div className="grid grid-cols-1 gap-2">
-            <button
-              type="button"
-              onClick={autofillShubham}
-              className="w-full bg-[#24242A] hover:bg-stone-800 border border-stone-700 text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between text-stone-200 transition-colors"
-            >
-              <div>
-                <p className="font-bold text-white">shubhamchauhan0019@gmail.com</p>
-                <p className="text-[10px] text-stone-400 font-mono">Password: aurabake0019</p>
-              </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FACC15]/20 text-[#FACC15] font-bold">Auto-Fill</span>
-            </button>
-            <button
-              type="button"
-              onClick={autofillMaster}
-              className="w-full bg-[#24242A] hover:bg-stone-800 border border-stone-700 text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between text-stone-200 transition-colors"
-            >
-              <div>
-                <p className="font-bold text-white">admin@aurabake.app</p>
-                <p className="text-[10px] text-stone-400 font-mono">Password: Aurabake@Admin2026</p>
-              </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-700 text-stone-300 font-bold">Auto-Fill</span>
-            </button>
-          </div>
+        {/* Administrator Security & Account Help */}
+        <div className="mt-6 pt-5 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400">
+          <span>Need access or forgot password?</span>
+          <button
+            type="button"
+            onClick={handleResetPassword}
+            disabled={loading}
+            className="text-[#FACC15] hover:underline font-bold transition-colors cursor-pointer"
+          >
+            Reset Password
+          </button>
         </div>
       </motion.div>
     </div>

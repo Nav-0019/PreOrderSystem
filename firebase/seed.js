@@ -85,14 +85,31 @@ async function seed() {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Add menu items as subcollection
+    // Add menu items to canonical root /menu_items and outlet subcollection
     const items = menuItems[id] || [];
     for (const item of items) {
       const { id: itemId, ...itemData } = item;
-      const itemRef = outletRef.collection("menu_items").doc(itemId);
-      batch.set(itemRef, {
+
+      // 1. Canonical root collection (/menu_items)
+      const canonicalRef = db.collection("menu_items").doc(`${id}_${itemId}`);
+      batch.set(canonicalRef, {
         ...itemData,
         outletId: id,
+        outletName: outlet.name,
+        isApproved: true,
+        approvalStatus: "approved",
+        prepTime: 5,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 2. Subcollection (/outlets/{id}/menu_items) for backward compatibility
+      const subItemRef = outletRef.collection("menu_items").doc(itemId);
+      batch.set(subItemRef, {
+        ...itemData,
+        outletId: id,
+        outletName: outlet.name,
+        isApproved: true,
+        approvalStatus: "approved",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }

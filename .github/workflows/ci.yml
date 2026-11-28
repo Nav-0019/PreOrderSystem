@@ -1,0 +1,81 @@
+name: AuraBake Continuous Integration
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  admin-web:
+    name: Admin Web (React 19 / TypeScript / Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: client/admin_web/package.json
+
+      - name: Install Dependencies
+        working-directory: client/admin_web
+        run: npm ci || npm install
+
+      - name: Typecheck and Build Production Bundle
+        working-directory: client/admin_web
+        run: npm run build
+
+  cloud-functions:
+    name: Firebase Cloud Functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Functions Dependencies
+        working-directory: firebase/functions
+        run: npm install
+
+      - name: Check Cloud Functions Syntax
+        working-directory: firebase/functions
+        run: node -c index.js
+
+  flutter-app:
+    name: Flutter Mobile Application (Customer & Manager)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Flutter Dependencies
+        working-directory: client/food_app
+        run: flutter pub get
+
+      - name: Analyze Flutter Code
+        working-directory: client/food_app
+        run: flutter analyze
+
+      - name: Run Flutter Unit and Widget Tests
+        working-directory: client/food_app
+        run: flutter test

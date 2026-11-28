@@ -123,10 +123,15 @@ Login → Dashboard → Manage Users → Monitor Orders
 
 ---
 
-## 🧱 Tech Stack (Context)
-- **Backend:** FastAPI  
-- **Database:** PostgreSQL  
-- **Authentication:** JWT  
+## 🧱 Production Tech Stack & Architecture
+
+- **Mobile Client:** Flutter 3.x (Dart) for Android and iOS
+- **Admin Command Desk:** React 19, TypeScript, Vite, Tailwind CSS
+- **Backend & Database:** Google Cloud Firestore & Firebase Cloud Functions
+- **Authentication:** Firebase Authentication (Role-based: Student, Manager/Baker, Admin)
+- **Security:** Outlet-scoped Firestore security rules with atomic transactional checkout
+
+> **Note on Architecture Evolution:** Early initial design prototypes referenced FastAPI, PostgreSQL, and Supabase SQL triggers. These were superseded by Firebase Cloud Firestore and Cloud Functions to deliver real-time order state streams, sub-second kitchen updates, and serverless scalability. Legacy SQL files in the repository root are preserved for historical/academic review.
 
 ---
 

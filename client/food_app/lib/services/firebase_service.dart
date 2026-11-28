@@ -124,14 +124,16 @@ class FirebaseService {
 
   // ── Orders ────────────────────────────────────────────────
 
-  /// Place an order — writes directly to Firestore orders collection.
+  /// Place an order atomically using a Firestore transaction.
+  /// Persists order document, pickupSlot, payment verification state, and updates outlet queue.
   static Future<String?> placeOrder({
     required String outletId,
     required String outletName,
     required double totalAmount,
     required List<Map<String, dynamic>> items,
+    String? pickupSlot,
     String paymentMethod = 'UPI_QR',
-    String paymentStatus = 'PAID',
+    String paymentStatus = 'PENDING_VERIFICATION',
     String? transactionId,
   }) async {
     final user = _auth.currentUser;
@@ -153,6 +155,7 @@ class FirebaseService {
       'outletName': outletName,
       'totalAmount': totalAmount,
       'status': 'pending',
+      'pickupSlot': pickupSlot ?? 'Immediate / Next Available Slot',
       'paymentMethod': paymentMethod,
       'paymentStatus': paymentStatus,
       'transactionId': transactionId ?? '',
@@ -166,24 +169,25 @@ class FirebaseService {
       }).toList(),
     };
 
-    // 1. Write the order document
-    await orderRef.set(orderData);
-
-    // 2. Update outlet queue count in a safe separate block
-    try {
-      final outletSnap = await outletRef.get();
-      final currentQueue = outletSnap.data()?['queueCount'] as int? ?? 0;
+    // Execute atomic transaction: write order AND increment outlet queue count
+    await _db.runTransaction((transaction) async {
+      final outletSnap = await transaction.get(outletRef);
+      final currentQueue = outletSnap.exists
+          ? (outletSnap.data()?['queueCount'] as int? ?? 0)
+          : 0;
       final newQueue = currentQueue + 1;
       final newWaitTime = '${newQueue * 2}-${newQueue * 2 + 3} mins';
-      await outletRef.update({
-        'queueCount': newQueue,
-        'waitTime': newWaitTime,
-      });
-    } catch (e) {
-      debugPrint('Non-critical: outlet queue count update skipped: $e');
-    }
 
-    debugPrint('Order placed: ${orderRef.id}');
+      transaction.set(orderRef, orderData);
+      if (outletSnap.exists) {
+        transaction.update(outletRef, {
+          'queueCount': newQueue,
+          'waitTime': newWaitTime,
+        });
+      }
+    });
+
+    debugPrint('Order placed atomically: ${orderRef.id} with slot: ${orderData['pickupSlot']}');
     return orderRef.id;
   }
 
@@ -460,7 +464,8 @@ class FirebaseService {
       String outletId, Map<String, dynamic> item) async {
     if (outletId.trim().isEmpty) return;
     try {
-      await _db.collection('menu_items').add({
+      // Write to canonical root /menu_items collection
+      final docRef = await _db.collection('menu_items').add({
         ...item,
         'outletId': outletId,
         'isAvailable': true,
@@ -468,20 +473,28 @@ class FirebaseService {
         'approvalStatus': 'approved',
         'createdAt': FieldValue.serverTimestamp(),
       });
-    } catch (_) {}
+      debugPrint('Menu item added to canonical collection: ${docRef.id}');
 
-    try {
-      await _db
-          .collection('outlets')
-          .doc(outletId)
-          .collection('menu_items')
-          .add({
-            ...item,
-            'outletId': outletId,
-            'isAvailable': true,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-    } catch (_) {}
+      // Mirror to outlet subcollection for backward compatibility
+      try {
+        await _db
+            .collection('outlets')
+            .doc(outletId)
+            .collection('menu_items')
+            .doc(docRef.id)
+            .set({
+              ...item,
+              'outletId': outletId,
+              'isAvailable': true,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+      } catch (e) {
+        debugPrint('Non-critical: subcollection mirror skipped: $e');
+      }
+    } catch (e) {
+      debugPrint('Error adding menu item: $e');
+      rethrow;
+    }
   }
 
   static Future<void> updateMenuItemAvailability(

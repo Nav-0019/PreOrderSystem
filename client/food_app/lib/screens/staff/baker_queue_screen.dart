@@ -444,7 +444,8 @@ class _OrderTicketState extends State<_OrderTicket> {
               textCapitalization: TextCapitalization.characters,
               maxLength: 4,
               decoration: const InputDecoration(
-                labelText: 'Enter 4-digit code to verify (Optional)',
+                labelText: 'Enter 4-digit code shown on student screen',
+                hintText: 'e.g. 1001',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.lock_outline),
                 counterText: '',
@@ -459,24 +460,30 @@ class _OrderTicketState extends State<_OrderTicket> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
+              backgroundColor: AppTheme.green,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () {
               final entered = tokenCtrl.text.trim().toUpperCase();
-              if (entered.isNotEmpty && entered != expectedToken.toUpperCase()) {
+              if (entered.isEmpty || entered != expectedToken.toUpperCase()) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Token does not match! Please check student phone.')),
+                  const SnackBar(
+                    content: Text('Verification failed: Code does not match student pickup token!'),
+                    backgroundColor: AppTheme.red,
+                  ),
                 );
                 return;
               }
               Navigator.pop(ctx);
               _setStatus('completed');
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Order verified and handed over successfully! ✓')),
+                const SnackBar(
+                  content: Text('Student token verified! Order handed over and logged ✓'),
+                  backgroundColor: AppTheme.green,
+                ),
               );
             },
-            child: const Text('Confirm Handover ✓', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+            child: const Text('Verify & Hand Over ✓', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
           ),
         ],
       ),
@@ -564,6 +571,25 @@ class _OrderTicketState extends State<_OrderTicket> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if ((order['pickupSlot'] as String?)?.isNotEmpty == true) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.primaryBdr),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.access_time_filled, size: 12, color: AppTheme.primary),
+                        const SizedBox(width: 4),
+                        Text('Pickup Slot: ${order['pickupSlot']}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                      ],
+                    ),
+                  ),
+                ],
                 ...items.map((item) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
@@ -673,31 +699,9 @@ class _OrderTicketState extends State<_OrderTicket> {
                   Row(
                     children: [
                       Expanded(
-                        flex: 3,
                         child: _actionBtn(
-                          'Confirm Quality & Handover ✓',
+                          'Verify Token & Complete Handover 🤝',
                           AppTheme.green,
-                          Icons.verified,
-                          () async {
-                            await _setStatus('completed');
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Quality confirmed! Order finished & logged in History ✓'),
-                                  backgroundColor: AppTheme.green,
-                                  duration: Duration(seconds: 3),
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: _actionBtn(
-                          'Verify Code',
-                          AppTheme.primary,
                           Icons.qr_code_scanner,
                           _showPickupVerificationDialog,
                         ),

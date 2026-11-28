@@ -31,6 +31,7 @@ class _CartScreenState extends State<CartScreen> {
           totalAmount: total,
           outletId: cart.currentOutletId!,
           outletName: cart.currentOutletName ?? 'Campus Canteen',
+          pickupSlot: _selectedSlot,
           items: cart.items.values
               .map((i) => {
                     'id': i.id,
